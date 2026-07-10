@@ -18,3 +18,4 @@
 
 # Quarto/knitr caches
 *_cache/
+.cache/
