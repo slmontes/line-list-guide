@@ -1,0 +1,3 @@
+[submodule "DDSALineLists"]
+	path = DDSALineLists
+	url = https://github.com/epirecipes/DDSALineLists.jl
