@@ -1,0 +1,199 @@
+---
+title: "Recall bias (telescoping toward the report date)"
+subtitle: "Line-list data quality issue"
+author: "Sandra Montes (\\@slmontes)"
+date: 2026-07-06
+format:
+    html:
+        code-overflow: wrap
+        toc: true
+        toc-depth: 2
+    gfm:
+        code-overflow: wrap
+    pdf:
+        code-overflow: wrap
+        engine: xelatex
+        fig-format: pdf
+engine: julia
+julia:
+    exeflags: ["--project=@."]
+execute:
+    cache: true
+bibliography: ../../references.bib
+---
+
+## The issue
+
+Recall bias occurs when symptom onset dates are derived from patient self-reporting rather than extracted from clinical records. Because individuals recall recent events more accurately than distant ones, they tend to anchor vague dates to  more recent markers ("I think it started last weekend"), so a remembered onset drifts toward the present. The magnitude of this drift increases with the true time elapsed since symptom onset. A patient interviewed one day after onset is unlikely to misremember, whereas a patient interviewed two weeks later may telescope the reported date forward by several days. This shortens the apparent interval between onset and subsequent events, and biases delay estimates downward. This effect can be more pronounced in interview-based surveillance and retrospective outbreak investigations, where onset dates are reconstructed days or weeks after the fact.
+
+Here, the telescoping effect is modelled as a cumulative function of a per-day forgetting probability, p_forget, to evaluate its impact on two specific intervals: onset-to-admission (the primary estimand of this study) and onset-to-report. Inference is conducted using `fit_lognormal_pcd`, which performs a lognormal delay fit via Hamiltonian Monte Carlo in `Turing.jl`. This approach relies on a primary-event censored likelihood from `CensoredDistributions.jl` [@CensoredDistributions_jl], the Julia equivalent of the R package `primarycensored` [@charniga2024delays; @primarycensored].
+
+This example is shown for the DDSA pipeline only.
+
+## Methods
+
+A baseline DDSA line list is simulated, followed by the application of the `add_recall_bias!` function using three distinct forgetting probabilities (0, 0.1, and 0.4). Each day within the interval between true onset and reporting is independently dropped with probability `p_forget`. This mechanism shifts the recalled onset toward the report date, generating the telescoping effect described previously. Because each of the $g$ days in the true onset-to-report gap is omitted independently, the expected magnitude of the recall shift is $p_{\text{forget}} \cdot g$. This scaling means that longer delays telescope more than shorter ones, and the compression is not uniform across cases. This is the same reason the effect grows with the length of the reporting delay.
+
+We show both onset-to-admission and onset-to-report delays, since recall bias can affect both. It can shorten the apparent onset-to-report delay by exactly the recall shift, and shortens the apparent onset-to-admission delay by the same amount (admission is anchored to the true clinical event, not to the remembered onset).
+
+## Setup
+
+```{julia}
+#| output: false
+using Pkg
+Pkg.instantiate()
+
+using DDSALineLists
+using DataFrames
+using Dates
+using Distributions
+using Random
+
+include(joinpath(@__DIR__, "..", "shared", "fit_helpers.jl"))
+include(joinpath(@__DIR__, "..", "shared", "scenario_plots.jl"))
+
+const SEED = 1234
+const N_SUB = 500      # realistic surveillance sample size (primary fit cohort)
+const FIG_DIR = abspath(joinpath(@__DIR__, "..", "..", "figures"))
+const OUT_PATH = joinpath(FIG_DIR, "issue_recall_bias.png")
+const OUT_PATH_EPI = joinpath(FIG_DIR, "issue_recall_bias_epicurve.png")
+const P_FORGET_LEVELS = [0.0, 0.1, 0.4]
+
+function delays_using(ll::DataFrame, onset_col::Symbol, target_col::Symbol)
+    on = ll[!, onset_col]
+    tgt = ll[!, target_col]
+    Int[Dates.value(tgt[i] - on[i]) for i in axes(ll, 1)
+        if !ismissing(on[i]) && !ismissing(tgt[i])]
+end
+```
+
+## Simulate a clean DDSA line list
+
+```{julia}
+p = DDSAParams(β = 0.6, γ = 0.4, ρ = 0.005, N = 30_000, nsteps = 200)
+ll_clean = simulate_linelist_ddsa(
+    p;
+    reporting_delay_dist = Distributions.Gamma(3, 1),
+    admi_delay_dist = LogNormal(1.5, 0.5),
+    seed = SEED,
+)
+ll_clean = subsample_linelist(ll_clean, N_SUB; seed = SEED)
+println("DDSA clean line list: $(nrow(ll_clean)) cases")
+```
+
+## Apply recall bias at each forgetting level and fit
+
+```{julia}
+#| output: false
+est_admission = NamedTuple[]
+est_report = NamedTuple[]
+labels = String[]
+recalled_onsets = Dict{Float64, Vector{Any}}()  # for the epidemic-curve panel
+for (k, pf) in enumerate(P_FORGET_LEVELS)
+    ll = copy(ll_clean)
+    add_recall_bias!(ll; p_forget = pf, seed = SEED + 100 + k)
+    recalled_onsets[pf] = collect(ll.date_onset_recalled)
+    push!(est_admission,
+          fit_lognormal_pcd(delays_using(ll, :date_onset_recalled, :date_admission);
+                              n_samples = 1000, n_chains = 2, seed = SEED + k))
+    push!(est_report,
+          fit_lognormal_pcd(delays_using(ll, :date_onset_recalled, :date_reporting);
+                              n_samples = 1000, n_chains = 2, seed = SEED + k))
+    push!(labels, "p_forget = $pf")
+end
+```
+
+Truth is the no-recall (`p_forget = 0`) fit, produced by the same `fit_lognormal_pcd` estimator as every other scenario. Defining "truth" as the no-recall estimate (rather than the analytic data-generating distribution) isolates the recall effect. Under this framework, the `p_forget = 0` scenario aligns with the dashed line, and any deviation in the other scenarios represents the effect of recall bias.
+
+```{julia}
+#| output: false
+const TRUTH_ADMISSION = (meanlog = est_admission[1].dist.μ,
+                         sdlog = est_admission[1].dist.σ)
+const TRUTH_REPORT = (meanlog = est_report[1].dist.μ,
+                      sdlog = est_report[1].dist.σ)
+```
+
+## Figure: delay distributions
+
+```{julia}
+#| out-width: "100%"
+fig = comparison_figure_two_outcomes(
+    est_admission, est_report, labels;
+    truth_a = TRUTH_ADMISSION,
+    truth_b = TRUTH_REPORT,
+    title = "Recall bias: telescoping toward the report date",
+    outcome_titles = ("Onset-to-admission delay (days)",
+                      "Onset-to-report delay (days)"),
+    density_xlabels = ("onset-to-admission delay (days)",
+                       "onset-to-report delay (days)"),
+)
+save(OUT_PATH, fig)
+fig
+```
+
+## Figure: epidemic-curve distortion
+
+```{julia}
+#| out-width: "100%"
+function daily_counts(dates, t0::Date, maxday::Int)
+    c = zeros(Int, maxday + 1)
+    for d in dates
+        ismissing(d) && continue
+        day = Dates.value(d - t0)
+        0 <= day <= maxday && (c[day + 1] += 1)
+    end
+    return c
+end
+
+t0 = minimum(ll_clean.date_onset)
+true_days = Int[Dates.value(d - t0) for d in ll_clean.date_onset]
+recalled_days = vcat((Int[Dates.value(d - t0) for d in recalled_onsets[pf] if !ismissing(d)]
+                      for pf in P_FORGET_LEVELS)...)
+maxday = maximum(vcat(true_days, recalled_days))
+
+true_c = daily_counts(ll_clean.date_onset, t0, maxday)
+xhi = findlast(>(0), true_c) + 12
+
+fig_epi = Figure(size = (900, 360), figure_padding = (12, 18, 8, 8))
+ax = Axis(fig_epi[1, 1];
+    xlabel = "epidemic day (since first true onset)",
+    ylabel = "cases by onset day",
+    title = "Epidemic-curve distortion under recall bias",
+    titlealign = :left)
+lines!(ax, 0:maxday, true_c; color = :black, linewidth = 2.5, label = "true onset")
+palette = Makie.wong_colors()
+for (k, pf) in enumerate(P_FORGET_LEVELS)
+    pf == 0.0 && continue
+    c = daily_counts(recalled_onsets[pf], t0, maxday)
+    lines!(ax, 0:maxday, c; color = palette[k], linewidth = 2,
+           label = "recalled onset, p_forget = $pf")
+end
+xlims!(ax, 0, xhi)
+axislegend(ax; position = :rt, framevisible = false, labelsize = 11)
+save(OUT_PATH_EPI, fig_epi)
+fig_epi
+```
+
+```{julia}
+#| output: true
+#| echo: false
+
+println("\n--- Onset-to-admission ---")
+for (lab, e) in zip(labels, est_admission)
+    @info lab n=e.n median=e.median mean=e.mean sd=e.sd
+end
+println("\n--- Onset-to-report ---")
+for (lab, e) in zip(labels, est_report)
+    @info lab n=e.n median=e.median mean=e.mean sd=e.sd
+end
+```
+
+## Results
+
+Relative to the `p_forget = 0` reference, increasing the forgetting probability shortens both delay distributions. The onset-to-admission median decreases from approximately 4.45 days to 4.14 days at `p_forget = 0.1` and to 3.13 days at `p_forget = 0.4`, representing a downward bias of roughly 30% at the highest evaluated rate. Over the same range, the onset-to-report median decreases from approximately 2.59 to 1.41 days.
+
+At `p_forget = 0.4`, both delays decrease by a similar absolute magnitude of approximately 1.2 to 1.3 days. Because admission and report dates are fixed administrative dates, shifting the recalled onset toward the report date subtracts an equivalent amount of time from both intervals. In relative terms, the onset-to-report delay is more compressed (roughly 45% compared to 30%) because its baseline duration is shorter, so the same absolute shift is a larger fraction of it. Because telescoping occurs only within the interval between actual onset and reporting, the observed distortion remains modest under the short reporting delay simulated here, which has a mean gap of approximately 3 days. This distortion would be expected to scale with longer reporting gaps. 
+
+Additionally, serial interval estimates, which depend directly on onset timing, would be subject to a similar bias. However, this effect is not quantified here because the simulated line list records individual cases rather than linked transmission pairs between an infector and an infectee.
+
+This telescoping phenomenon also distorts the reconstructed epidemic curve. As recalled onsets shift closer to the report date, the overall onset distribution shifts later and flattens. Specifically, the apparent growth phase is dampened, the decline phase is broadened, and at `p_forget = 0.4`, the mean onset day shifts later by approximately one day. This structural shift is consequential because epidemic curves derived from recalled onsets are used to estimate growth rates and $R_t$. Therefore, estimation models might interpret the slower, later-peaking curve as a less transmissible outbreak. Similar to the effect on delay distributions, this distortion is constrained by the short reporting delay simulated here but would amplify as the true onset-to-report gap increases.
