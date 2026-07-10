@@ -5,7 +5,10 @@
 *.DS_Store
 
 *.html
-*_files/
+# Quarto sidecar assets: keep the figure PNGs (the committed .md links to them
+# on GitHub), but ignore the bulky JS/CSS bundles under libs/.
+*_files/*
+!*_files/figure-commonmark/
 
 # LaTeX build artefacts
 *.aux
