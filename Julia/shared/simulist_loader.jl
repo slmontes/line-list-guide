@@ -33,7 +33,6 @@ function load_simulist_baseline(; seed::Int = 42, cache::Bool = true)
         :date_onset_mild => Date,
         :date_onset_severe => Date,
         :date_admission => Date,
-        :date_death => Date,
         :date_first_contact => Date,
         :date_last_contact => Date,
         :date_reporting => Date,

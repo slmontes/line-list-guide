@@ -3,7 +3,10 @@
 # the OLD figures (R/generate-linelist.R in github.com/.../line-list-guide).
 #
 # The match covers:
-#   - simulist::sim_linelist with the paper's three delay distributions and
+#   - simulist::sim_linelist with the paper's two delay distributions
+#     (onset-to-admission and reporting delay; onset-to-death is not drawn, as
+#     no analysis uses it and the estimand throughout is the onset-to-admission
+#     delay) and
 #     outbreak_size = c(5000, 30000) (see the calibrated call below; the upper
 #     bound ~ DDSA's N for comparable scale).
 #   - hosp_risk: NOT passed (uses simulist's default), as in OLD. We previously
@@ -56,8 +59,9 @@ ll <- simulist::sim_linelist(
   outbreak_size   = c(5000, 30000),
   onset_to_hosp   = function(x) stats::rlnorm(n = x, meanlog = 1.5,
                                               sdlog = 0.5),
-  onset_to_death  = function(x) stats::rlnorm(n = x, meanlog = 2.5,
-                                              sdlog = 0.5),
+  # onset_to_death is left at the simulist default and its date is dropped
+  # below: no scenario uses the death delay, so specifying it would only add an
+  # orphaned column.
   reporting_delay = function(x) stats::rgamma(n = x, shape = 3, scale = 1)
 )
 
@@ -82,7 +86,7 @@ ll[is.na(date_admission),  date_onset_severe := NA]
 
 keep_cols <- c("id", "case_type", "outcome", "asymptomatic",
                "date_onset", "date_onset_mild", "date_onset_severe",
-               "date_admission", "date_death",
+               "date_admission",
                "date_first_contact", "date_last_contact",
                "date_reporting")
 ll_keep <- ll[, intersect(keep_cols, names(ll)), with = FALSE]

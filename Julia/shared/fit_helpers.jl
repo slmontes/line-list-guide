@@ -212,7 +212,7 @@ may be fractional — used for inverse-probability-weighted (survey-style)
 corrections, e.g. up-weighting under-observed cases under time-varying
 missingness.
 
-Default priors: `meanlog ~ Normal(1, 0.5)`,`sdlog ~ Normal(0.5, 0.5)` (truncated positive). 
+Default priors: `meanlog ~ Normal(1, 1)`,`sdlog ~ Normal(0.5, 0.5)` (truncated positive).
 The return value matches [`fit_lognormal_bayes`](@ref) so plotting code is interchangeable.
 """
 function fit_lognormal_pcd(observed_delay::AbstractVector;
