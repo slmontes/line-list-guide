@@ -408,8 +408,8 @@ rather than correct the bias. For recall bias specifically, the
 dependable options are therefore obtaining gold-standard onsets for a
 subsample, as above, or capturing a less recall-prone onset marker at
 the point of data collection. Where neither is possible, the bias must
-be noted, together with its likely downward direction, but it cannot be
-removed.
+be noted, together with its likely downward direction, but may not be
+removable.
 
 <div id="refs" class="references csl-bib-body hanging-indent"
 entry-spacing="0">
