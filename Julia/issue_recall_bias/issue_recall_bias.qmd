@@ -34,7 +34,7 @@ This example is shown for the DDSA pipeline only.
 
 A baseline DDSA line list is simulated, followed by the application of the `add_recall_bias!` function using three distinct forgetting probabilities (0, 0.1, and 0.4). Each day within the interval between true onset and reporting is independently dropped with probability `p_forget`. This mechanism shifts the recalled onset toward the report date, generating the telescoping effect described previously. Because each of the $g$ days in the true onset-to-report gap is omitted independently, the expected magnitude of the recall shift is $p_{\text{forget}} \cdot g$. This scaling means that longer delays telescope more than shorter ones, and the compression is not uniform across cases. This is the same reason the effect grows with the length of the reporting delay.
 
-We show both onset-to-admission and onset-to-report delays, since recall bias can affect both. It can shorten the apparent onset-to-report delay by exactly the recall shift, and shortens the apparent onset-to-admission delay by the same amount (admission is anchored to the true clinical event, not to the remembered onset).
+We show both onset-to-admission and onset-to-report delays, since recall bias can affect both. It can shorten the apparent onset-to-report delay by exactly the recall shift, and shortens the apparent onset-to-admission delay by the same amount (admission is anchored to the true clinical event, not to the remembered onset). The recalled onset is bounded above by the admission date, since a patient cannot report symptom onset as beginning after their own hospital admission. In the small share of cases where telescoping would otherwise carry the recalled onset past admission, it is set equal to the admission date, so the onset-to-admission delay compresses toward zero rather than turning negative and being dropped from the fit.
 
 ## Setup
 
@@ -92,6 +92,17 @@ recalled_onsets = Dict{Float64, Vector{Any}}()  # for the epidemic-curve panel
 for (k, pf) in enumerate(P_FORGET_LEVELS)
     ll = copy(ll_clean)
     add_recall_bias!(ll; p_forget = pf, seed = SEED + 100 + k)
+    # A patient cannot recall symptom onset as occurring after their own
+    # admission, so the recalled onset is bounded by the admission date. Because
+    # reporting and admission are drawn independently from onset here, reporting
+    # sometimes falls after admission, and telescoping toward the report date
+    # can otherwise push the recalled onset past admission, producing negative
+    # onset-to-admission delays that the fit silently discards.
+    ll.date_onset_recalled = [
+        ismissing(ll.date_onset_recalled[i]) || ismissing(ll.date_admission[i]) ?
+            ll.date_onset_recalled[i] :
+            min(ll.date_onset_recalled[i], ll.date_admission[i])
+        for i in axes(ll, 1)]
     recalled_onsets[pf] = collect(ll.date_onset_recalled)
     push!(est_admission,
           fit_lognormal_pcd(delays_using(ll, :date_onset_recalled, :date_admission);
@@ -190,10 +201,90 @@ end
 
 ## Results
 
-Relative to the `p_forget = 0` reference, increasing the forgetting probability shortens both delay distributions. The onset-to-admission median decreases from approximately 4.45 days to 4.14 days at `p_forget = 0.1` and to 3.13 days at `p_forget = 0.4`, representing a downward bias of roughly 30% at the highest evaluated rate. Over the same range, the onset-to-report median decreases from approximately 2.59 to 1.41 days.
+Relative to the `p_forget = 0` reference, increasing the forgetting probability shortens both delay distributions. The onset-to-admission median decreases from approximately 4.45 days to 4.12 days at `p_forget = 0.1` and to 2.90 days at `p_forget = 0.4`, representing a downward bias of roughly 35% at the highest evaluated rate. Over the same range, the onset-to-report median decreases from approximately 2.59 to 1.42 days.
 
-At `p_forget = 0.4`, both delays decrease by a similar absolute magnitude of approximately 1.2 to 1.3 days. Because admission and report dates are fixed administrative dates, shifting the recalled onset toward the report date subtracts an equivalent amount of time from both intervals. In relative terms, the onset-to-report delay is more compressed (roughly 45% compared to 30%) because its baseline duration is shorter, so the same absolute shift is a larger fraction of it. Because telescoping occurs only within the interval between actual onset and reporting, the observed distortion remains modest under the short reporting delay simulated here, which has a mean gap of approximately 3 days. This distortion would be expected to scale with longer reporting gaps. 
+In relative terms, the onset-to-report delay is more compressed than the onset-to-admission delay (roughly 45% compared to 35%) because its baseline duration is shorter, so the same telescoping shift is a larger fraction of it. Because telescoping occurs only within the interval between actual onset and reporting, the observed distortion remains modest under the short reporting delay simulated here, which has a mean gap of approximately 3 days. This distortion would be expected to scale with longer reporting gaps.
 
 Additionally, serial interval estimates, which depend directly on onset timing, would be subject to a similar bias. However, this effect is not quantified here because the simulated line list records individual cases rather than linked transmission pairs between an infector and an infectee.
 
 This telescoping phenomenon also distorts the reconstructed epidemic curve. As recalled onsets shift closer to the report date, the overall onset distribution shifts later and flattens. Specifically, the apparent growth phase is dampened, the decline phase is broadened, and at `p_forget = 0.4`, the mean onset day shifts later by approximately one day. This structural shift is consequential because epidemic curves derived from recalled onsets are used to estimate growth rates and $R_t$. Therefore, estimation models might interpret the slower, later-peaking curve as a less transmissible outbreak. Similar to the effect on delay distributions, this distortion is constrained by the short reporting delay simulated here but would amplify as the true onset-to-report gap increases.
+
+## Correcting recall bias
+
+Recall bias differs from the other issues in this guide because the onset date is present but systematically wrong rather than missing, so the true delay distribution cannot be recovered from the degraded line list on its own. A short recalled delay is equally consistent with a genuinely short delay and with a longer delay that was telescoped, and these two explanations cannot be separated using the recalled column alone. A correction therefore needs information from outside that column. We demonstrate this at `p_forget = 0.4`, where the bias is largest, using a validation subsample of cases whose true onset is known.
+
+The validation subsample is a set of cases for which a gold-standard onset has been recovered from clinical records alongside the remembered onset. On this subsample the recall shift is observed directly, and its distribution is used to impute the shift for the remaining cases. The imputation is repeated so the spread of plausible shifts is carried through rather than collapsed onto a single guess. We tried to sharpen the imputation by predicting each shift from the observed recalled onset-to-report gap, but that gap carries almost no per-case information, because the gap and the shift are confounded, so the correction reduces to imputing from the shift distribution learned on the subsample.
+
+```{julia}
+#| output: false
+const PF_FIX = 0.4
+const VAL_FRAC = 0.30      # share of cases with a gold-standard, record-based onset
+const N_IMP = 15           # multiple-imputation draws for the validation correction
+const OUT_PATH_FIX = joinpath(FIG_DIR, "issue_recall_bias_fix.png")
+
+ll_fix = copy(ll_clean)
+add_recall_bias!(ll_fix; p_forget = PF_FIX, seed = SEED + 100 + 3)
+ll_fix.date_onset_recalled = [
+    ismissing(ll_fix.date_onset_recalled[i]) || ismissing(ll_fix.date_admission[i]) ?
+        ll_fix.date_onset_recalled[i] :
+        min(ll_fix.date_onset_recalled[i], ll_fix.date_admission[i])
+    for i in axes(ll_fix, 1)]
+
+nfix = nrow(ll_fix)
+recalled_delay = Int[Dates.value(ll_fix.date_admission[i]     - ll_fix.date_onset_recalled[i]) for i in 1:nfix]
+true_delay     = Int[Dates.value(ll_fix.date_admission[i]     - ll_fix.date_onset[i])          for i in 1:nfix]
+recall_shift   = Int[Dates.value(ll_fix.date_onset_recalled[i] - ll_fix.date_onset[i])         for i in 1:nfix]
+
+# Pool several posterior fits (one per imputation) into one estimate NamedTuple.
+function pool_fits(fits)
+    med = reduce(vcat, f.median_samples for f in fits)
+    mn  = reduce(vcat, f.mean_samples   for f in fits)
+    sdv = reduce(vcat, f.sd_samples     for f in fits)
+    μs = log.(med)
+    σs = sqrt.(max.(2 .* (log.(mn) .- μs), 0.0))
+    d  = LogNormal(median(μs), median(σs))
+    q(x) = (median(x), quantile(x, 0.025), quantile(x, 0.975))
+    return (n = fits[1].n, dist = d, median = q(med), mean = q(mn), sd = q(sdv),
+            median_samples = med, mean_samples = mn, sd_samples = sdv)
+end
+
+# Validation-informed correction: learn the recall-shift distribution on the
+# gold-standard subsample and multiply-impute it for the remaining cases.
+rng_val = MersenneTwister(SEED + 777)
+val_mask = falses(nfix)
+val_mask[sample(rng_val, 1:nfix, round(Int, VAL_FRAC * nfix); replace = false)] .= true
+val_shifts = recall_shift[val_mask]                    # shifts observed where truth is known
+
+rng_imp = MersenneTwister(SEED + 888)
+imp_fits = NamedTuple[]
+for m in 1:N_IMP
+    d = Int[val_mask[i] ? true_delay[i] :
+            recalled_delay[i] + sample(rng_imp, val_shifts) for i in 1:nfix]
+    push!(imp_fits, fit_lognormal_pcd(filter(≥(0), d); n_samples = 1000, n_chains = 2, seed = SEED + 2000 + m))
+end
+est_validation = pool_fits(imp_fits)
+```
+
+```{julia}
+#| output: true
+#| echo: false
+@info "validation recall shift (days)" mean=round(mean(val_shifts), digits=2) n_validation=sum(val_mask)
+@info "onset-to-admission median (days)" truth=round(exp(TRUTH_ADMISSION.meanlog), digits=2) naive=round(est_admission[3].median[1], digits=2) validation=round(est_validation.median[1], digits=2)
+@info "onset-to-admission sd (days)" truth=round(est_admission[1].sd[1], digits=2) naive=round(est_admission[3].sd[1], digits=2) validation=round(est_validation.sd[1], digits=2)
+```
+
+```{julia}
+#| out-width: "100%"
+fix_estimates = [est_admission[3], est_validation]
+fix_labels = ["naive (recalled onset)",
+              "validation-informed correction"]
+fig_fix = comparison_figure(fix_estimates, fix_labels;
+    truth = TRUTH_ADMISSION,
+    title = "Correcting recall bias in the onset-to-admission delay (p_forget = 0.4)")
+save(OUT_PATH_FIX, fig_fix)
+fig_fix
+```
+
+With a validation subsample covering 30% of cases, 150 records here, the recall shift averages about 1.2 days. Imputing that shift for the remaining cases returns the onset-to-admission median to about 4.3 days, close to the dashed reference of 4.45 days and well away from the naive estimate of 2.90 days. The location is recovered, but the dispersion only partly so. The fitted standard deviation falls from 4.07 days under the naive fit to 3.39 days, still above the clean-data value of 2.62 days, because the shift is imputed from its marginal distribution and cannot be matched to each case's own delay. Fully recovering the spread would need a per-case predictor of the shift, which the recalled data do not provide.
+
+When no validation data exist, there is no comparable way to recover the estimate. The recall shift cannot be measured, and any adjustment would rest on an assumed telescoping magnitude that the recalled data can neither confirm nor refute, so the result would reflect the assumption rather than correct the bias. For recall bias specifically, the dependable options are therefore obtaining gold-standard onsets for a subsample, as above, or capturing a less recall-prone onset marker at the point of data collection. Where neither is possible, the bias must be noted, together with its likely downward direction, but it cannot be removed.

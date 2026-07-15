@@ -48,8 +48,9 @@ We evaluate four approaches to resolving the seven-day onset window:
 - **Ad-hoc resolution (midpoint):** the same bins are used, but each
   onset is resolved to the bin midpoint, again with `pwindow = 1`. This
   is the common pragmatic choice: it is roughly centred on average, but
-  because it still commits to a single date it understates the
-  dispersion.
+  because it still commits to a single date it inflates the dispersion,
+  adding a spurious within-week spread on top of the true delay
+  variation.
 - **Model with censoring:** the same bins are used, but rather than
   resolving to a single date the censored fit takes the full bin width
   (`pwindow = 7`).

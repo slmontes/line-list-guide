@@ -36,7 +36,7 @@ In this example the default analyst behaviour is to drop every row whose onset i
 
 1. **Truth:** the fit to the complete line list, before any onset is dropped. Every other curve is read against this reference.
 2. **MCAR (missing completely at random), 50%:** half of the onsets are dropped uniformly at random, and we fit the survivors (a complete-case analysis). Because the dropping ignores the delay, the survivors are simply a smaller random sample, so the estimate stays on the truth. This is the benign baseline, where missingness costs precision but not accuracy.
-3. **Delay-dependent MNAR (missing not at random):** the chance an onset is dropped rises with that case's own onset-to-admission delay, so a complete-case analysis preferentially loses the long-delay cases and the fitted delay is biased downward. This is the hard case, and it cannot be undone by reweighting or censoring the recorded rows: the missingness is driven by the very delay that is unobserved once the onset is gone, and a wide censoring window on a missing onset carries no information about where in it the onset fell (we verified that adding one does not move the estimate). The remedies are at collection, by recording why an onset is missing or an auxiliary variable correlated with the delay, or a mechanistic back-calculation from the fully-observed admission curve. We leave the latter out of scope, since it recovers the delay only by importing a correctly-specified epidemic model and in this case it would be a circular correction.
+3. **Delay-dependent MNAR (missing not at random):** the chance an onset is dropped rises with that case's own onset-to-admission delay, so a complete-case analysis preferentially loses the long-delay cases and the fitted delay is biased downward. This is the hard case, and it cannot be undone by reweighting or censoring the recorded rows: the missingness is driven by the very delay that is unobserved once the onset is gone, and a wide censoring window on a missing onset carries no information about where in it the onset fell. The remedies are at collection, by recording why an onset is missing or an auxiliary variable correlated with the delay, or a mechanistic back-calculation from the fully-observed admission curve. We leave the latter out of scope, since it recovers the delay only by importing a correctly-specified epidemic model and in this case it would be a circular correction.
 4. **Time-varying missingness:** the chance an onset is dropped rises as the outbreak progresses. For this to bias the estimate, the delay must itself change over the outbreak, so we impose a trend on the onset-to-admission delay (shorter early, longer late) with the overall mean held fixed, which leaves the pooled truth unchanged. Dropping more onsets late then preferentially removes the long-delay cases and biases the fit downward, though more mildly than the delay-dependent case.
 5. **Time-varying missingness, corrected by inverse-probability weighting (IPW):** the recoverable case, because the missingness is driven by calendar time, which is observed for every case through the reporting date, rather than by the hidden delay. We estimate the probability that an onset is recorded as a function of the reporting week, then up-weight each recorded case by the inverse of that probability, so the reweighted sample stands in for the full one. This uses only observed quantities, with no epidemic-model assumption, and returns the estimate close to the truth.
 
@@ -150,6 +150,28 @@ function complete_case_ipw(ll::AbstractDataFrame, mask::AbstractVector; binwidth
     return delays, w
 end
 
+# Wide censoring window for the delay-dependent MNAR check: keep the missing-onset
+# rows instead of dropping them, entering each as the broad interval [adm − 56, adm]
+# (the honest "onset sometime before admission" an analyst could assert without extra information), while recorded onsets keep pwindow = 1. Mirrors the interval-censored construction in issue_imputation.
+function censored_window_delays(ll::AbstractDataFrame, mask::AbstractVector)
+    on = ll.date_onset; adm = ll.date_admission
+    min_obs_onset = minimum(on[i] for i in axes(ll, 1) if !mask[i])
+    delays = Float64[]; pwindows = Float64[]
+    for i in axes(ll, 1)
+        if !mask[i]
+            d = Dates.value(adm[i] - on[i])
+            d >= 0 || continue
+            push!(delays, d); push!(pwindows, 1.0)
+        else
+            earliest = max(min_obs_onset, adm[i] - Day(56))
+            d = Dates.value(adm[i] - earliest)
+            d >= 0 || continue
+            push!(delays, d); push!(pwindows, Float64(Dates.value(adm[i] - earliest) + 1))
+        end
+    end
+    return delays, pwindows
+end
+
 fit_cc(delays; seed) = fit_lognormal_pcd(delays;
     pwindow = ones(length(delays)), n_samples = 1000, n_chains = 2, seed = seed)
 fit_ipw(delays, w; seed) = fit_lognormal_pcd(delays;
@@ -195,6 +217,12 @@ est_delay_cc = fit_cc(complete_case_delays(ll, mask_delay); seed = SEED + 2)
 est_time_cc  = fit_cc(complete_case_delays(ll, mask_time); seed = SEED + 3)
 est_time_ipw = fit_ipw(complete_case_ipw(ll, mask_time)...; seed = SEED + 13)
 
+# Check: can a wide censoring window on the missing rows repair the delay-dependent
+# MNAR bias? (It cannot; the window carries no information about where the onset fell.)
+_dcw, _pwcw = censored_window_delays(ll, mask_delay)
+est_delay_censored = fit_lognormal_pcd(_dcw; pwindow = _pwcw,
+    n_samples = 1000, n_chains = 2, seed = SEED + 22)
+
 estimates = [est_truth, est_mcar, est_delay_cc, est_time_cc, est_time_ipw]
 labels = ["truth (complete data)",
           "MCAR 50% (complete-case)",
@@ -222,9 +250,9 @@ fig
 
 The five columns separate cleanly into the benign, the recoverable, and the irreparable. Against a complete-data reference near a median of 4.25 days, dropping half the onsets at random leaves the estimate on the reference (about 4.28 days). Random missingness, however extensive, costs precision but not accuracy. This is the sanity check that the complete-case estimator is unbiased when nothing links missingness to the delay.
 
-The delay-dependent mechanism is the hard case, the surveillance system that captures onset mainly at admission. When the probability that an onset is missing rises with the case's own onset-to-admission delay, complete-case analysis systematically under-samples the long delays and the median falls to about 3.28 days, a downward bias of roughly 23%. This one cannot be undone by reweighting or censoring the recorded cases, and it is worth being precise about why: the missingness is governed by the delay, which is exactly the quantity that is unobserved when the onset is missing. Widening the censoring window on the missing rows does not help, because a wide window carries no information about *where* in it the onset fell; in a separate check (not shown in the figure) it left the estimate essentially unmoved, still far below the reference. The honest remedies are at collection, recording why an onset is missing or an auxiliary variable correlated with the delay, or a mechanistic back-calculation from the fully-observed admission curve, which we deliberately do not attempt here because on data generated by such a model it would risk demonstrating only that we can invert our own generator.
+The delay-dependent mechanism is the hard case, the surveillance system that captures onset mainly at admission. When the probability that an onset is missing rises with the case's own onset-to-admission delay, complete-case analysis systematically under-samples the long delays and the median falls to about 3.28 days, a downward bias of roughly 23%. This one cannot be undone by reweighting or censoring the recorded cases, and it is worth being precise about why: the missingness is governed by the delay, which is exactly the quantity that is unobserved when the onset is missing. Widening the censoring window on the missing rows does not help, because a wide window carries no information about *where* in it the onset fell. Entering each missing onset as a broad interval `[admission − 56, admission]` rather than dropping it did not move the median back toward the truth, leaving it at about 3.07 days against the complete-case 3.28 and the 4.26 reference. The honest remedies are at collection, recording why an onset is missing or an auxiliary variable correlated with the delay, or a mechanistic back-calculation from the fully-observed admission curve, which we deliberately do not attempt here because on data generated by such a model it would risk demonstrating only that we can invert our own generator.
 
-The time-varying mechanism is the recoverable case, the surge in which an overwhelmed system stops collecting onset dates. A missingness rate that climbs over epidemic time, riding on the mean-preserving delay trend, preferentially drops the later long-delay cases and pulls the median down to about 3.94 days, a milder bias. Because its driver is calendar time, which is observed for every case through the reporting date, inverse-probability weighting on the reporting week returns the estimate to about 4.19 days, back on the reference. The weighting recovers the truth under the condition that, given the variable used to form the weights, missingness no longer depends on the delay; here the mechanism keys off onset time while the weights are formed on reporting week, which proxies it closely enough (reporting lags onset by only a few days) for the correction to land. 
+The time-varying mechanism is the recoverable case, the surge in which an overwhelmed system stops collecting onset dates. A missingness rate that climbs over epidemic time, riding on the mean-preserving delay trend, preferentially drops the later long-delay cases and pulls the median down to about 3.94 days, a milder bias. Because its driver is calendar time, which is observed for every case through the reporting date, inverse-probability weighting on the reporting week returns the estimate to about 4.19 days, back on the reference. The weighting recovers the truth under the condition that, given the variable used to form the weights, missingness no longer depends on the delay; here the mechanism keys off onset time while the weights are formed on reporting week, which proxies it closely enough (reporting lags onset by only a few days) for the correction to land.
 
 In sum, random missingness is harmless for the central estimate, missingness driven by an observed covariate can be reweighted away, and missingness driven by the unobserved delay itself cannot be reweighted away, so it must be anticipated in the line-list design.
 
@@ -236,4 +264,5 @@ In sum, random missingness is harmless for the central estimate, missingness dri
 for (lab, e) in zip(labels, estimates)
     @info lab n=e.n median=e.median mean=e.mean sd=e.sd
 end
+@info "delay-dependent MNAR (wide censoring window; check)" n=est_delay_censored.n median=round(est_delay_censored.median[1], digits=2) sd=round(est_delay_censored.sd[1], digits=2)
 ```

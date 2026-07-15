@@ -36,7 +36,7 @@ We evaluate four approaches to resolving the seven-day onset window:
 
 - **Exact dates available:** the delay is computed from the true `date_onset` with `pwindow = 1`, providing the clean-data reference.
 - **Ad-hoc resolution (lower bound):** each onset is binned into a seven-day window aligned to `date_reporting` and then resolved to the lower bound of that window, again with `pwindow = 1`. Because the bin always contains the true onset, the lower bound places onset as early as possible and therefore inflates the delay the most, making this the worst-case resolution.
-- **Ad-hoc resolution (midpoint):** the same bins are used, but each onset is resolved to the bin midpoint, again with `pwindow = 1`. This is the common pragmatic choice: it is roughly centred on average, but because it still commits to a single date it understates the dispersion.
+- **Ad-hoc resolution (midpoint):** the same bins are used, but each onset is resolved to the bin midpoint, again with `pwindow = 1`. This is the common pragmatic choice: it is roughly centred on average, but because it still commits to a single date it inflates the dispersion, adding a spurious within-week spread on top of the true delay variation.
 - **Model with censoring:** the same bins are used, but rather than resolving to a single date the censored fit takes the full bin width (`pwindow = 7`).
 
 Presenting both the lower-bound and midpoint resolutions makes clear that the magnitude of the bias is largely an analytical choice, with the lower bound representing the worst case, whereas the censoring approach provides the principled correction.

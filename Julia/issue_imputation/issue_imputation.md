@@ -354,12 +354,17 @@ width="1100" height="780" />
 The clean-data reference sits near a median delay of 4.4 days. Imputing
 missing onsets with the date of report reduces this to about 3.2 days in
 DDSA (95% CrI 2.9–3.5) and 3.4 days in `simulist` (3.1–3.7), a downward
-location bias of roughly 25%. This agreement confirms that the bias
-originates from the zero-delay assumption, and not from either
-generator. In the `simulist` pipeline, the “all cases” curve exhibits a
-further decline to about 3.1 days; this occurs because the asymptomatic
-reporting dates are clustered near admission, forcing the imputed
-onset-to-admission delay towards zero. This illustrates that the
+location bias of roughly 25%. This agreement across both generators
+points to the zero-delay assumption as the driver rather than a quirk of
+one pipeline. Both pipelines share one subtlety worth noting. Imputing
+onset to the report date places it after admission whenever report
+follows admission, and the non-negative-delay filter then drops those
+cases, here about 9% (524 down to 475). Because those are the
+would-be-negative delays, this silent drop tempers the shortening rather
+than causing it. In the `simulist` pipeline, the “all cases” curve
+exhibits a further decline to about 3.1 days; this occurs because the
+asymptomatic reporting dates are clustered near admission, forcing the
+imputed onset-to-admission delay towards zero. This illustrates that the
 magnitude of imputation bias is sensitive to the underlying subgroup
 structure rather than being a constant parameter. Thus, the
 pipeline-independent assessment focuses on the symptomatic-only cases,
