@@ -32,6 +32,35 @@ function subsample_linelist(ll::AbstractDataFrame, n::Integer; seed::Int = 1)
 end
 
 """
+    add_calendar_week_uncertainty!(ll; onset_col=:date_onset)
+
+Replace each onset with the fixed ISO calendar week (Monday–Sunday) that contains
+it, writing `date_onset_lower`/`date_onset_upper`. Models onset recorded only to the
+week on a fixed grid (e.g. "week of 6 March"). Unlike a report-anchored rolling
+window, a fixed calendar grid leaves the true onset uniformly distributed within its
+7-day window, so an interval-censored fit with a uniform primary-event window is
+correctly specified rather than mis-specified.
+"""
+function add_calendar_week_uncertainty!(ll::AbstractDataFrame; onset_col::Symbol = :date_onset)
+    onset = ll[!, onset_col]
+    n = nrow(ll)
+    lower = Vector{Union{Date, Missing}}(undef, n)
+    upper = Vector{Union{Date, Missing}}(undef, n)
+    for i in 1:n
+        o = onset[i]
+        if ismissing(o)
+            lower[i] = missing; upper[i] = missing
+        else
+            w0 = Dates.firstdayofweek(o)          # Monday of the onset's calendar week
+            lower[i] = w0; upper[i] = w0 + Day(6)
+        end
+    end
+    ll.date_onset_lower = lower
+    ll.date_onset_upper = upper
+    return ll
+end
+
+"""
     fit_lognormal(delays_days::AbstractVector{<:Real}; n_boot=1000, alpha=0.05, seed=1)
 
 Maximum-likelihood fit of a `LogNormal` to a vector of positive delays (in days),

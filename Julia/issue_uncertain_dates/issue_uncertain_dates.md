@@ -27,11 +27,12 @@ analytical method selected. False precision arises when inherent
 uncertainty is discarded rather than being accounted for in the
 statistical fit.
 
-By binning each onset onto a weekly grid anchored to the report date,
-the scenario can represent the temporal uncertainty rather than
-structural measurement error. This binning procedure is applied across
-both pipelines to evaluate four distinct methodological approaches for
-handling interval data.
+By binning each onset onto a fixed weekly calendar grid, the scenario
+can represent the temporal uncertainty rather than structural
+measurement error. A fixed grid, rather than one anchored to the report
+date, leaves the true onset uniformly distributed within its week. This
+binning procedure is applied across both pipelines to evaluate four
+distinct methodological approaches for handling interval data.
 
 ## Methods
 
@@ -39,8 +40,8 @@ We evaluate four approaches to resolving the seven-day onset window:
 
 - **Exact dates available:** the delay is computed from the true
   `date_onset` with `pwindow = 1`, providing the clean-data reference.
-- **Ad-hoc resolution (lower bound):** each onset is binned into a
-  seven-day window aligned to `date_reporting` and then resolved to the
+- **Ad-hoc resolution (lower bound):** each onset is binned into the
+  fixed seven-day calendar week containing it and then resolved to the
   lower bound of that window, again with `pwindow = 1`. Because the bin
   always contains the true onset, the lower bound places onset as early
   as possible and therefore inflates the delay the most, making this the
@@ -64,14 +65,16 @@ The lower-bound and midpoint resolutions both set `pwindow = 1`,
 instructing the fit to treat the resolved date as exact. The censoring
 approach instead sets `pwindow = 7`, which places a uniform prior over
 where within the week the true onset fell and allows the likelihood to
-integrate across that window rather than committing to a single point;
-this is the mechanism by which the date uncertainty is propagated into
-the credible intervals (Charniga 2024). The week-binning itself is
-performed by the package helper `add_onset_uncertainty!`, a port of the
-R `be_uncertain_date_week` that bins the true onset onto the
-report-aligned weekly grid and writes `date_onset_lower` and
-`date_onset_upper`; the two `week_bin_delays` resolutions are the
-analyst’s choices layered on that recorded interval.
+integrate across that window rather than committing to a single point.
+This is the mechanism by which the date uncertainty is propagated into
+the credible intervals (Charniga 2024). Because the onset is binned onto
+a fixed calendar grid, the true onset is uniformly distributed within
+its week, so this uniform primary-event prior is correctly specified.
+The week-binning is performed by the helper
+`add_calendar_week_uncertainty!`, which assigns each true onset to the
+calendar week (Monday–Sunday) containing it and writes
+`date_onset_lower` and `date_onset_upper`. The two `week_bin_delays`
+resolutions are the analyst’s choices layered on that recorded interval.
 
 Inference throughout uses `fit_lognormal_pcd`, a lognormal delay fit by
 Hamiltonian Monte Carlo (`Turing.jl`) under a primary-event–censored
@@ -123,7 +126,7 @@ function exact_delays(ll::AbstractDataFrame)
 end
 
 # Build (delay, pwindow) from the week-bin interval written by
-# `add_onset_uncertainty!`, under three analyst choices:
+# `add_calendar_week_uncertainty!`, under three analyst choices:
 #   :lower    — resolve onset to the bin's LOWER bound, pwindow = 1. The worst
 #               case: because the bin always contains the true onset, the lower
 #               bound pushes onset earliest and inflates the delay most.
@@ -174,7 +177,7 @@ ll_ddsa = simulate_linelist_ddsa(p;
     seed = SEED,
 )
 ll_ddsa = subsample_linelist(ll_ddsa, N_SUB; seed = SEED)
-add_onset_uncertainty!(ll_ddsa)  # writes date_onset_lower / date_onset_upper
+add_calendar_week_uncertainty!(ll_ddsa)  # fixed weekly grid: onset uniform within its week
 
 ddsa_exact = exact_delays(ll_ddsa)
 ddsa_lower, ddsa_lower_pw = week_bin_delays(ll_ddsa; mode = :lower)
@@ -206,7 +209,7 @@ if !isnothing(ll_sim)
            .!ismissing.(ll_sim.date_onset) .& .!ismissing.(ll_sim.date_reporting)
     sub = ll_sim[have, :]
     sub = subsample_linelist(sub, N_SUB; seed = SEED)
-    add_onset_uncertainty!(sub)  # same observation process as the DDSA branch
+    add_calendar_week_uncertainty!(sub)  # same observation process as the DDSA branch
     println("simulist symptomatic admitted with onset+reporting: $(nrow(sub)) cases")
 
     sim_exact = exact_delays(sub)
@@ -249,30 +252,34 @@ width="1100" height="720" />
 
 Compared to a clean-data reference with a median of 4.44 days, the
 handling choices span nearly the entire range of possible errors.
-Resolving each week to its earliest day places every onset too early and
-overestimates the delay, at about 7.80 days in DDSA and 7.74 in
-`simulist`, because the lower bound sits on average around three days
-before the true onset within its seven-day window (somewhat more in this
-case, as onsets fall more densely later in the week). Using the midpoint
-for resolution reduces location bias significantly (about 4.59 days in
-DDSA and 4.53 in `simulist`), as the midpoint is closer to the average
-true onset within the week.
+Resolving each week to its earliest day places every onset about three
+days too early, since on a fixed calendar grid the true onset falls
+roughly uniformly across the seven days, and overestimates the median
+delay to about 7.48 days in DDSA and 7.14 in `simulist`. Resolving to
+the week midpoint instead brings the median back close to the reference
+(about 4.22 days in DDSA and 3.88 in `simulist`), because the midpoint
+sits near the average true onset within the week.
 
-Treating the whole week as interval-censored keeps the bias small (about
-4.76 days in DDSA, 4.83 in `simulist`) and, unlike either point
-resolution, propagates the date uncertainty into wider credible
-intervals. The censored fit sits slightly above the reference on the
-median. Its advantage is not a smaller point bias but the honest
-uncertainty it carries. This small upward offset arises from the
-modelling convention that the primary event is uniform within its
-window, whereas within a reported week the true onset actually follows
-the epidemic curve and is denser toward the peak; we adopt the uniform
-convention to match the `primarycensored` workflow (Charniga 2024).
+The two point resolutions differ once the dispersion is considered.
+Committing each onset to a single date discards the within-week
+uncertainty, and the midpoint resolution nearly doubles the fitted
+standard deviation (about 5.09 days in DDSA and 4.85 in `simulist`,
+against a clean-data 2.60), so its credible intervals are falsely
+precise. Treating the whole week as interval-censored is the only
+approach that recovers both quantities, returning the median to the
+reference (about 4.54 days in DDSA, 4.29 in `simulist`) and the standard
+deviation to near its true value (about 2.73 days in DDSA, 2.55 in
+`simulist`) while propagating the date uncertainty into wider, honest
+credible intervals. Because a fixed calendar grid leaves the true onset
+uniformly distributed within its week, the uniform primary-event prior
+of the censored fit is correctly specified, so the censored estimate is
+unbiased in both location and spread rather than merely honest about its
+uncertainty (Charniga 2024).
 
-In sum, the analyst largely determines the magnitude of error, which can
-range from severe under careless resolution to negligible under
-censoring. False precision arises when uncertainty is disregarded rather
-than properly accounted for.
+In sum, the analyst largely determines the magnitude of error, which
+ranges from severe under a careless lower-bound resolution, through the
+false precision of a midpoint that discards the interval, to negligible
+under censoring that propagates it.
 
 ## Estimates
 
@@ -283,19 +290,19 @@ than properly accounted for.
     └   sd = (2.6014689918029585, 2.356052158960175, 2.8883595025413475)
     ┌ Info: DDSA: ad-hoc resolution (week-bin lower bound)
     │   n = 500
-    │   median = (7.803354330225558, 7.5516767226129895, 8.06551020697539)
-    │   mean = (8.326220906236788, 8.054333942275218, 8.617884877638367)
-    └   sd = (3.093522674630867, 2.8631933497125206, 3.390487574171817)
+    │   median = (7.482115675082779, 7.185779913545726, 7.774668109537469)
+    │   mean = (8.225373513433803, 7.900462845677497, 8.574095606498398)
+    └   sd = (3.753330393378786, 3.4382571300630027, 4.117048353817489)
     ┌ Info: DDSA: ad-hoc resolution (week-bin midpoint)
-    │   n = 496
-    │   median = (4.589167243691662, 4.341674573133975, 4.827701479914788)
-    │   mean = (5.499953244358915, 5.1902643224884555, 5.837128800206143)
-    └   sd = (3.6348439835717765, 3.2602311148985637, 4.150960546578224)
+    │   n = 491
+    │   median = (4.223025807278056, 3.9232247125230244, 4.533574150140943)
+    │   mean = (5.676203131872411, 5.220026300775284, 6.19815113375221)
+    └   sd = (5.08720658298868, 4.364825196203092, 6.059548482649521)
     ┌ Info: DDSA: model with censoring (pwindow = 7)
     │   n = 500
-    │   median = (4.7556131628554335, 4.47219391782731, 5.029345190302102)
-    │   mean = (5.238283582318932, 4.971354986219881, 5.527846511435977)
-    └   sd = (2.4172758315793774, 2.136352136541535, 2.7617164380661703)
+    │   median = (4.536847583598517, 4.262499097293831, 4.804161555491905)
+    │   mean = (5.135553774872746, 4.834372204608841, 5.457774997593322)
+    └   sd = (2.730771255551976, 2.4072037688005232, 3.1313541814503623)
     ┌ Info: simulist: exact dates available
     │   n = 500
     │   median = (4.336928858408264, 4.159397790115631, 4.537212956532551)
@@ -303,19 +310,19 @@ than properly accounted for.
     └   sd = (2.563261960617906, 2.3250074353672665, 2.8457462987237143)
     ┌ Info: simulist: ad-hoc resolution (week-bin lower bound)
     │   n = 500
-    │   median = (7.742242324636665, 7.485110282977389, 7.994631991619452)
-    │   mean = (8.247316113387658, 7.9717966280398205, 8.52501816300447)
-    └   sd = (3.023593293117942, 2.7850724117787156, 3.307517075727327)
+    │   median = (7.140786346696306, 6.874768535612562, 7.402708989784726)
+    │   mean = (7.829436860305815, 7.531886140751759, 8.152385918306441)
+    └   sd = (3.5243584536496186, 3.2324533037864867, 3.8423398437808447)
     ┌ Info: simulist: ad-hoc resolution (week-bin midpoint)
-    │   n = 496
-    │   median = (4.529838519708534, 4.298818104194343, 4.788898307335586)
-    │   mean = (5.408432793065018, 5.113307036146151, 5.751832714518799)
-    └   sd = (3.5187584316225853, 3.1324516139625467, 3.9857936077147813)
+    │   n = 491
+    │   median = (3.8778185297458565, 3.59845146018145, 4.150879035473521)
+    │   mean = (5.2777543916445, 4.867112407075739, 5.778171274867044)
+    └   sd = (4.845083578286294, 4.184515940048259, 5.833895911896906)
     ┌ Info: simulist: model with censoring (pwindow = 7)
     │   n = 500
-    │   median = (4.832525376369251, 4.574696098396727, 5.094596560007334)
-    │   mean = (5.250184177058628, 4.9836825223669665, 5.509427749809275)
-    └   sd = (2.2187472214459656, 1.9733554825721258, 2.519868208339426)
+    │   median = (4.288424578289564, 3.9931837262415804, 4.555284785956525)
+    │   mean = (4.847128120538818, 4.565175508304908, 5.117986802248733)
+    └   sd = (2.5497608639350453, 2.2085597227595564, 2.947166536094003)
 
 <div id="refs" class="references csl-bib-body hanging-indent"
 entry-spacing="0">

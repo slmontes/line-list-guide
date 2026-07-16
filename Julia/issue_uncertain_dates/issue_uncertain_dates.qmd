@@ -28,20 +28,20 @@ Onset dates are often known only approximately. When a patient reports symptom o
 
 This scenario aims to isolate two distinct analytical consequences. First, collapsing the interval to an incorrect single date introduces a location bias. For instance, resolving every onset to the beginning of its respective week systematically overestimates the resulting delays. Second, collapsing the interval to any single date, even one that is accurate on average, discards the underlying uncertainty. This approach results in an inaccurately precise delay distribution, with credible intervals that are narrower than what the raw data support. As a result, the size of the resulting error is significantly influenced by the analytical method selected. False precision arises when inherent uncertainty is discarded rather than being accounted for in the statistical fit.
 
-By binning each onset onto a weekly grid anchored to the report date, the scenario can represent the temporal uncertainty rather than structural measurement error. This binning procedure is applied across both pipelines to evaluate four distinct methodological approaches for handling interval data.
+By binning each onset onto a fixed weekly calendar grid, the scenario can represent the temporal uncertainty rather than structural measurement error. A fixed grid, rather than one anchored to the report date, leaves the true onset uniformly distributed within its week. This binning procedure is applied across both pipelines to evaluate four distinct methodological approaches for handling interval data.
 
 ## Methods
 
 We evaluate four approaches to resolving the seven-day onset window:
 
 - **Exact dates available:** the delay is computed from the true `date_onset` with `pwindow = 1`, providing the clean-data reference.
-- **Ad-hoc resolution (lower bound):** each onset is binned into a seven-day window aligned to `date_reporting` and then resolved to the lower bound of that window, again with `pwindow = 1`. Because the bin always contains the true onset, the lower bound places onset as early as possible and therefore inflates the delay the most, making this the worst-case resolution.
+- **Ad-hoc resolution (lower bound):** each onset is binned into the fixed seven-day calendar week containing it and then resolved to the lower bound of that window, again with `pwindow = 1`. Because the bin always contains the true onset, the lower bound places onset as early as possible and therefore inflates the delay the most, making this the worst-case resolution.
 - **Ad-hoc resolution (midpoint):** the same bins are used, but each onset is resolved to the bin midpoint, again with `pwindow = 1`. This is the common pragmatic choice: it is roughly centred on average, but because it still commits to a single date it inflates the dispersion, adding a spurious within-week spread on top of the true delay variation.
 - **Model with censoring:** the same bins are used, but rather than resolving to a single date the censored fit takes the full bin width (`pwindow = 7`).
 
 Presenting both the lower-bound and midpoint resolutions makes clear that the magnitude of the bias is largely an analytical choice, with the lower bound representing the worst case, whereas the censoring approach provides the principled correction.
 
-The lower-bound and midpoint resolutions both set `pwindow = 1`, instructing the fit to treat the resolved date as exact. The censoring approach instead sets `pwindow = 7`, which places a uniform prior over where within the week the true onset fell and allows the likelihood to integrate across that window rather than committing to a single point; this is the mechanism by which the date uncertainty is propagated into the credible intervals [@charniga2024delays]. The week-binning itself is performed by the package helper `add_onset_uncertainty!`, a port of the R `be_uncertain_date_week` that bins the true onset onto the report-aligned weekly grid and writes `date_onset_lower` and `date_onset_upper`; the two `week_bin_delays` resolutions are the analyst's choices layered on that recorded interval.
+The lower-bound and midpoint resolutions both set `pwindow = 1`, instructing the fit to treat the resolved date as exact. The censoring approach instead sets `pwindow = 7`, which places a uniform prior over where within the week the true onset fell and allows the likelihood to integrate across that window rather than committing to a single point. This is the mechanism by which the date uncertainty is propagated into the credible intervals [@charniga2024delays]. Because the onset is binned onto a fixed calendar grid, the true onset is uniformly distributed within its week, so this uniform primary-event prior is correctly specified. The week-binning is performed by the helper `add_calendar_week_uncertainty!`, which assigns each true onset to the calendar week (Monday–Sunday) containing it and writes `date_onset_lower` and `date_onset_upper`. The two `week_bin_delays` resolutions are the analyst's choices layered on that recorded interval.
 
 Inference throughout uses `fit_lognormal_pcd`, a lognormal delay fit by Hamiltonian Monte Carlo (`Turing.jl`) under a primary-event–censored likelihood from `CensoredDistributions.jl` [@CensoredDistributions_jl], the Julia counterpart of R's `primarycensored` [@primarycensored]. As in the other scenarios we run two independently built line lists: the DDSA mechanistic model (Julia) and a `simulist` clean line list (R) degraded by the identical week-binning rule. Agreement between them is a cross-check that the bias is a property of the uncertainty handling rather than of one generator.
 
@@ -87,7 +87,7 @@ function exact_delays(ll::AbstractDataFrame)
 end
 
 # Build (delay, pwindow) from the week-bin interval written by
-# `add_onset_uncertainty!`, under three analyst choices:
+# `add_calendar_week_uncertainty!`, under three analyst choices:
 #   :lower    — resolve onset to the bin's LOWER bound, pwindow = 1. The worst
 #               case: because the bin always contains the true onset, the lower
 #               bound pushes onset earliest and inflates the delay most.
@@ -139,7 +139,7 @@ ll_ddsa = simulate_linelist_ddsa(p;
     seed = SEED,
 )
 ll_ddsa = subsample_linelist(ll_ddsa, N_SUB; seed = SEED)
-add_onset_uncertainty!(ll_ddsa)  # writes date_onset_lower / date_onset_upper
+add_calendar_week_uncertainty!(ll_ddsa)  # fixed weekly grid: onset uniform within its week
 
 ddsa_exact = exact_delays(ll_ddsa)
 ddsa_lower, ddsa_lower_pw = week_bin_delays(ll_ddsa; mode = :lower)
@@ -170,7 +170,7 @@ if !isnothing(ll_sim)
            .!ismissing.(ll_sim.date_onset) .& .!ismissing.(ll_sim.date_reporting)
     sub = ll_sim[have, :]
     sub = subsample_linelist(sub, N_SUB; seed = SEED)
-    add_onset_uncertainty!(sub)  # same observation process as the DDSA branch
+    add_calendar_week_uncertainty!(sub)  # same observation process as the DDSA branch
     println("simulist symptomatic admitted with onset+reporting: $(nrow(sub)) cases")
 
     sim_exact = exact_delays(sub)
@@ -208,11 +208,11 @@ fig
 
 ## Results
 
-Compared to a clean-data reference with a median of 4.44 days, the handling choices span nearly the entire range of possible errors. Resolving each week to its earliest day places every onset too early and overestimates the delay, at about 7.80 days in DDSA and 7.74 in `simulist`, because the lower bound sits on average around three days before the true onset within its seven-day window (somewhat more in this case, as onsets fall more densely later in the week). Using the midpoint for resolution reduces location bias significantly (about 4.59 days in DDSA and 4.53 in `simulist`), as the midpoint is closer to the average true onset within the week. 
+Compared to a clean-data reference with a median of 4.44 days, the handling choices span nearly the entire range of possible errors. Resolving each week to its earliest day places every onset about three days too early, since on a fixed calendar grid the true onset falls roughly uniformly across the seven days, and overestimates the median delay to about 7.48 days in DDSA and 7.14 in `simulist`. Resolving to the week midpoint instead brings the median back close to the reference (about 4.22 days in DDSA and 3.88 in `simulist`), because the midpoint sits near the average true onset within the week.
 
-Treating the whole week as interval-censored keeps the bias small (about 4.76 days in DDSA, 4.83 in `simulist`) and, unlike either point resolution, propagates the date uncertainty into wider credible intervals. The censored fit sits slightly above the reference on the median. Its advantage is not a smaller point bias but the honest uncertainty it carries. This small upward offset arises from the modelling convention that the primary event is uniform within its window, whereas within a reported week the true onset actually follows the epidemic curve and is denser toward the peak; we adopt the uniform convention to match the `primarycensored` workflow [@charniga2024delays]. 
+The two point resolutions differ once the dispersion is considered. Committing each onset to a single date discards the within-week uncertainty, and the midpoint resolution nearly doubles the fitted standard deviation (about 5.09 days in DDSA and 4.85 in `simulist`, against a clean-data 2.60), so its credible intervals are falsely precise. Treating the whole week as interval-censored is the only approach that recovers both quantities, returning the median to the reference (about 4.54 days in DDSA, 4.29 in `simulist`) and the standard deviation to near its true value (about 2.73 days in DDSA, 2.55 in `simulist`) while propagating the date uncertainty into wider, honest credible intervals. Because a fixed calendar grid leaves the true onset uniformly distributed within its week, the uniform primary-event prior of the censored fit is correctly specified, so the censored estimate is unbiased in both location and spread rather than merely honest about its uncertainty [@charniga2024delays].
 
-In sum, the analyst largely determines the magnitude of error, which can range from severe under careless resolution to negligible under censoring. False precision arises when uncertainty is disregarded rather than properly accounted for.
+In sum, the analyst largely determines the magnitude of error, which ranges from severe under a careless lower-bound resolution, through the false precision of a midpoint that discards the interval, to negligible under censoring that propagates it.
 
 ## Estimates
 
