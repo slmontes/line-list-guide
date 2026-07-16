@@ -28,10 +28,11 @@ symptom onset row detailed in Table 1 of the manuscript. When the term
 onset can refer to any of several symptoms emerging at different times,
 the choice of which symptom to record functions identically to a formal
 change in definition. Here, the analysis contrasts three clinical
-anchors: a consistent definition based on severe onset (the metric used
-to generate the baseline data), an inconsistent definition based on the
-earlier mild onset, and a pooled line list that aggregates the two
-definitions in equal proportions.
+anchors: severe onset, the definition used to generate the baseline data
+and so the reference; the earlier mild onset, a uniform but different
+anchor that shifts the whole delay distribution rather than making any
+single record inconsistent; and a pooled line list that mixes the two
+definitions in equal proportions, the genuinely inconsistent case.
 
 ## Methods
 
@@ -41,16 +42,19 @@ onset (`date_onset_mild`) and a later severe, case-defining onset
 the onset-to-admission delay under three choices of which onset the
 analysis treats as the start of illness:
 
-- **Consistent definition:** delay =
-  `date_admission − date_onset_severe`.
-- **Inconsistent definition:** delay =
-  `date_admission − date_onset_mild` (the earlier onset).
-- **Pooled definition:** each case independently uses severe or mild
+- **Severe onset (reference):** delay =
+  `date_admission − date_onset_severe`, the definition used to generate
+  the data.
+- **Mild onset (shifted):** delay = `date_admission − date_onset_mild`
+  (the earlier onset). This is a uniform but different anchor than the
+  reference, so the whole delay distribution is shifted rather than made
+  internally inconsistent.
+- **Mixed onset (50/50):** each case independently uses severe or mild
   onset (50/50), modelling a line list that pools records from teams
-  applying different definitions. This demonstrates the “complicates
-  pooling” failure mode, where an intermediate, biased central estimate
-  with inflated dispersion (a mixture of the two delay distributions) is
-  obtained.
+  applying different definitions. This is the genuinely inconsistent
+  case and demonstrates the “complicates pooling” failure mode, where an
+  intermediate, biased central estimate with inflated dispersion (a
+  mixture of the two delay distributions) is obtained.
 
 In the `simulist` pipeline the mild onset is already present in the
 baseline line list: the R script samples
@@ -188,9 +192,9 @@ est_ddsa_mild   = fit_pcd(ddsa_mild;   seed = SEED + 1)
 est_ddsa_pooled = fit_pcd(ddsa_pooled; seed = SEED + 10)
 
 estimates = [est_ddsa_severe, est_ddsa_mild, est_ddsa_pooled]
-labels = ["DDSA: consistent (severe onset, stage 2)",
-          "DDSA: inconsistent (mild onset, stage 1)",
-          "DDSA: pooled (50/50 mixed definitions)"]
+labels = ["DDSA: severe onset (reference, stage 2)",
+          "DDSA: mild onset (shifted, stage 1)",
+          "DDSA: mixed onset (50/50)"]
 ```
 
 ## simulist branch (aligned baseline columns)
@@ -209,9 +213,9 @@ if !isnothing(ll_sim)
     push!(estimates, fit_pcd(sim_severe; seed = SEED + 2))
     push!(estimates, fit_pcd(sim_mild;   seed = SEED + 3))
     push!(estimates, fit_pcd(sim_pooled; seed = SEED + 12))
-    push!(labels, "simulist: consistent (date_onset_severe)")
-    push!(labels, "simulist: inconsistent (date_onset_mild)")
-    push!(labels, "simulist: pooled (50/50 mixed definitions)")
+    push!(labels, "simulist: severe onset (reference)")
+    push!(labels, "simulist: mild onset (shifted)")
+    push!(labels, "simulist: mixed onset (50/50)")
 else
     @warn "Skipping simulist branch — DDSA-only figure"
 end
@@ -219,14 +223,13 @@ end
 
 ## Figure
 
-Truth is the consistent-definition (severe onset) fit on undegraded
-data.
+Truth is the severe-onset (reference) fit on undegraded data.
 
 ``` julia
 fig = comparison_figure(
     estimates, labels;
     truth = (meanlog = est_ddsa_severe.dist.μ, sdlog = est_ddsa_severe.dist.σ),
-    title = "Inconsistent symptom definitions: consistent, inconsistent, and pooled onset",
+    title = "Inconsistent symptom definitions: severe, mild, and mixed onset",
 )
 save(OUT_PATH, fig)
 fig
@@ -264,32 +267,32 @@ definition each record used.
 
 ## Estimates
 
-    ┌ Info: DDSA: consistent (severe onset, stage 2)
+    ┌ Info: DDSA: severe onset (reference, stage 2)
     │   n = 500
     │   median = (4.288551871476503, 4.0915424426910825, 4.493250735926015)
     │   mean = (4.905319627863075, 4.676931800010813, 5.165765565403016)
     └   sd = (2.7245801444790514, 2.464871780860387, 3.021177568766752)
-    ┌ Info: DDSA: inconsistent (mild onset, stage 1)
+    ┌ Info: DDSA: mild onset (shifted, stage 1)
     │   n = 500
     │   median = (5.940746489969326, 5.723893966206184, 6.168520787911174)
     │   mean = (6.4567869278263625, 6.213314905699762, 6.715584376776864)
     └   sd = (2.7478639122156823, 2.525482648269106, 3.0241536084046454)
-    ┌ Info: DDSA: pooled (50/50 mixed definitions)
+    ┌ Info: DDSA: mixed onset (50/50)
     │   n = 500
     │   median = (5.013908855955018, 4.794283164958679, 5.251024683984876)
     │   mean = (5.703080973711887, 5.440888986598865, 6.009924917757569)
     └   sd = (3.098692160256194, 2.79121062379936, 3.4697512683504472)
-    ┌ Info: simulist: consistent (date_onset_severe)
+    ┌ Info: simulist: severe onset (reference)
     │   n = 500
     │   median = (4.342158317766912, 4.148943384049939, 4.536946842744401)
     │   mean = (4.899806224636079, 4.681707411443766, 5.133810938935199)
     └   sd = (2.5662685648098247, 2.330619166180114, 2.841815004818032)
-    ┌ Info: simulist: inconsistent (date_onset_mild)
+    ┌ Info: simulist: mild onset (shifted)
     │   n = 500
     │   median = (6.256060337657827, 6.016491316995573, 6.504871078875189)
     │   mean = (6.885150267372407, 6.617604231972806, 7.17922833347427)
     └   sd = (3.1697782790703526, 2.9012584775565835, 3.499652118309974)
-    ┌ Info: simulist: pooled (50/50 mixed definitions)
+    ┌ Info: simulist: mixed onset (50/50)
     │   n = 500
     │   median = (5.171350841519244, 4.95086032962797, 5.397138606979933)
     │   mean = (5.857624218637, 5.5937436394865605, 6.138243747330913)

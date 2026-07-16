@@ -26,15 +26,15 @@ bibliography: ../../references.bib
 
 The onset-to-admission delay remains well-defined only relative to a fixed clinical definition of onset. Because disease progression manifests as a sequence of symptoms, different surveillance systems or clinical teams frequently anchor the onset date to different clinical milestones, such as the initial mild symptom in one setting versus the first severe or case-defining symptom in another. Calculating the delay from an earlier symptom than the analysis intends to artificially extends the interval by the duration of the mild-to-severe phase. This represents a definitional shift rather than a measurement error or an inherent uncertainty. Unlike the imputation and uncertain-date scenarios, this structural bias cannot be resolved through statistical date handling or censoring methods. The primary resolution requires implementing a consistent clinical definition at the point of data collection.
 
-This issue can be exacerbated when a line list aggregates records from clinical teams employing different definitions. In such cases, the recorded delays form a mixture of two shifted distributions, a dynamic that skews the central tendency and artificially increases the variance. This same mechanism accounts for the closely related vagueness of symptom onset row detailed in Table 1 of the manuscript. When the term onset can refer to any of several symptoms emerging at different times, the choice of which symptom to record functions identically to a formal change in definition. Here, the analysis contrasts three clinical anchors: a consistent definition based on severe onset (the metric used to generate the baseline data), an inconsistent definition based on the earlier mild onset, and a pooled line list that aggregates the two definitions in equal proportions.
+This issue can be exacerbated when a line list aggregates records from clinical teams employing different definitions. In such cases, the recorded delays form a mixture of two shifted distributions, a dynamic that skews the central tendency and artificially increases the variance. This same mechanism accounts for the closely related vagueness of symptom onset row detailed in Table 1 of the manuscript. When the term onset can refer to any of several symptoms emerging at different times, the choice of which symptom to record functions identically to a formal change in definition. Here, the analysis contrasts three clinical anchors: severe onset, the definition used to generate the baseline data and so the reference; the earlier mild onset, a uniform but different anchor that shifts the whole delay distribution rather than making any single record inconsistent; and a pooled line list that mixes the two definitions in equal proportions, the genuinely inconsistent case.
 
 ## Methods
 
 Each simulated case carries two onset dates, an earlier mild-symptom onset (`date_onset_mild`) and a later severe, case-defining onset (`date_onset_severe`), together with an admission date. We then compute the onset-to-admission delay under three choices of which onset the analysis treats as the start of illness:
 
-- **Consistent definition:** delay = `date_admission − date_onset_severe`.
-- **Inconsistent definition:** delay = `date_admission − date_onset_mild` (the earlier onset).
-- **Pooled definition:** each case independently uses severe or mild onset (50/50), modelling a line list that pools records from teams applying different definitions. This demonstrates the "complicates pooling" failure mode, where an intermediate, biased central estimate with inflated dispersion (a mixture of the two delay distributions) is obtained.
+- **Severe onset (reference):** delay = `date_admission − date_onset_severe`, the definition used to generate the data.
+- **Mild onset (shifted):** delay = `date_admission − date_onset_mild` (the earlier onset). This is a uniform but different anchor than the reference, so the whole delay distribution is shifted rather than made internally inconsistent.
+- **Mixed onset (50/50):** each case independently uses severe or mild onset (50/50), modelling a line list that pools records from teams applying different definitions. This is the genuinely inconsistent case and demonstrates the "complicates pooling" failure mode, where an intermediate, biased central estimate with inflated dispersion (a mixture of the two delay distributions) is obtained.
 
 In the `simulist` pipeline the mild onset is already present in the baseline line list: the R script samples `date_onset_mild = date_onset_severe − Poisson(2)`, so no post-hoc shift is applied in Julia.
 
@@ -146,9 +146,9 @@ est_ddsa_mild   = fit_pcd(ddsa_mild;   seed = SEED + 1)
 est_ddsa_pooled = fit_pcd(ddsa_pooled; seed = SEED + 10)
 
 estimates = [est_ddsa_severe, est_ddsa_mild, est_ddsa_pooled]
-labels = ["DDSA: consistent (severe onset, stage 2)",
-          "DDSA: inconsistent (mild onset, stage 1)",
-          "DDSA: pooled (50/50 mixed definitions)"]
+labels = ["DDSA: severe onset (reference, stage 2)",
+          "DDSA: mild onset (shifted, stage 1)",
+          "DDSA: mixed onset (50/50)"]
 ```
 
 ## simulist branch (aligned baseline columns)
@@ -168,9 +168,9 @@ if !isnothing(ll_sim)
     push!(estimates, fit_pcd(sim_severe; seed = SEED + 2))
     push!(estimates, fit_pcd(sim_mild;   seed = SEED + 3))
     push!(estimates, fit_pcd(sim_pooled; seed = SEED + 12))
-    push!(labels, "simulist: consistent (date_onset_severe)")
-    push!(labels, "simulist: inconsistent (date_onset_mild)")
-    push!(labels, "simulist: pooled (50/50 mixed definitions)")
+    push!(labels, "simulist: severe onset (reference)")
+    push!(labels, "simulist: mild onset (shifted)")
+    push!(labels, "simulist: mixed onset (50/50)")
 else
     @warn "Skipping simulist branch — DDSA-only figure"
 end
@@ -178,14 +178,14 @@ end
 
 ## Figure
 
-Truth is the consistent-definition (severe onset) fit on undegraded data.
+Truth is the severe-onset (reference) fit on undegraded data.
 
 ```{julia}
 #| out-width: "100%"
 fig = comparison_figure(
     estimates, labels;
     truth = (meanlog = est_ddsa_severe.dist.μ, sdlog = est_ddsa_severe.dist.σ),
-    title = "Inconsistent symptom definitions: consistent, inconsistent, and pooled onset",
+    title = "Inconsistent symptom definitions: severe, mild, and mixed onset",
 )
 save(OUT_PATH, fig)
 fig
