@@ -1,0 +1,79 @@
+scenario,method,metric,n_reps,mean_est,est_lo,est_hi,mean_bias,mean_pct,pct_lo,pct_hi
+date_heaping,Censored-window,mean,100,5.12,4.835,5.408,0.02,0.4,-3.0,3.8
+date_heaping,Naive-heaped,mean,100,6.13,5.549,6.992,1.03,20.2,9.4,38.1
+date_heaping,Truth,mean,100,5.1,4.891,5.343,0.0,0.0,0.0,0.0
+date_heaping,Censored-window,median,100,4.499,4.235,4.781,-0.011,-0.2,-4.9,4.3
+date_heaping,Naive-heaped,median,100,4.356,4.024,4.716,-0.154,-3.4,-10.0,4.0
+date_heaping,Truth,median,100,4.51,4.332,4.708,0.0,0.0,0.0,0.0
+date_heaping,Censored-window,sd,100,2.773,2.412,3.116,0.08,3.0,-6.6,11.1
+date_heaping,Naive-heaped,sd,100,6.088,4.863,8.02,3.396,126.5,77.0,187.9
+date_heaping,Truth,sd,100,2.692,2.459,2.983,0.0,0.0,0.0,0.0
+imputation,Adhoc-report,mean,100,4.685,4.292,5.329,-0.399,-7.9,-13.9,3.2
+imputation,Interval-censored,mean,100,5.011,4.683,5.276,-0.074,-1.4,-5.3,2.3
+imputation,Mean-delay,mean,100,5.302,4.989,5.634,0.218,4.3,2.3,7.3
+imputation,Truth,mean,100,5.084,4.793,5.335,0.0,0.0,0.0,0.0
+imputation,Adhoc-report,median,100,3.324,3.042,3.605,-1.171,-26.0,-30.5,-21.4
+imputation,Interval-censored,median,100,4.445,4.165,4.682,-0.05,-1.1,-5.0,2.7
+imputation,Mean-delay,median,100,4.494,4.19,4.735,-0.001,-0.0,-2.7,2.7
+imputation,Truth,median,100,4.495,4.244,4.699,0.0,0.0,0.0,0.0
+imputation,Adhoc-report,sd,100,4.658,3.777,6.015,1.972,73.3,45.0,119.9
+imputation,Interval-censored,sd,100,2.606,2.316,2.893,-0.079,-2.9,-11.8,6.8
+imputation,Mean-delay,sd,100,3.318,2.962,3.74,0.633,23.6,12.3,38.5
+imputation,Truth,sd,100,2.685,2.431,3.012,0.0,0.0,0.0,0.0
+informative_missingness,Delay-dep MNAR,mean,100,4.777,4.285,5.857,-1.023,-17.5,-26.9,-4.2
+informative_missingness,MCAR,mean,100,6.016,5.324,7.396,0.217,3.7,-3.8,18.4
+informative_missingness,Time-varying,mean,100,5.6,5.089,6.808,-0.199,-3.5,-11.3,5.5
+informative_missingness,Time-varying + IPW,mean,100,5.893,5.31,7.037,0.094,1.6,-5.4,12.5
+informative_missingness,Truth,mean,100,5.799,5.409,6.612,0.0,0.0,0.0,0.0
+informative_missingness,Delay-dep MNAR,median,100,3.238,2.911,3.538,-0.919,-22.1,-28.0,-15.9
+informative_missingness,MCAR,median,100,4.223,3.942,4.584,0.066,1.6,-4.0,7.8
+informative_missingness,Time-varying,median,100,3.8,3.392,4.136,-0.357,-8.6,-15.4,-3.0
+informative_missingness,Time-varying + IPW,median,100,4.155,3.825,4.514,-0.002,-0.1,-4.2,5.5
+informative_missingness,Truth,median,100,4.157,3.905,4.379,0.0,0.0,0.0,0.0
+informative_missingness,Delay-dep MNAR,sd,100,5.221,3.484,8.27,-0.428,-7.6,-24.9,27.1
+informative_missingness,MCAR,sd,100,6.133,4.317,9.489,0.485,8.2,-10.6,42.5
+informative_missingness,Time-varying,sd,100,6.103,4.313,10.11,0.455,7.5,-5.6,37.4
+informative_missingness,Time-varying + IPW,sd,100,5.954,4.301,9.4,0.306,5.1,-7.9,30.2
+informative_missingness,Truth,sd,100,5.648,4.348,7.886,0.0,0.0,0.0,0.0
+recall_bias,P_forget=0.0,mean,100,5.1,4.896,5.352,0.0,0.0,0.0,0.0
+recall_bias,P_forget=0.1,mean,100,4.871,4.637,5.104,-0.229,-4.5,-5.7,-2.9
+recall_bias,P_forget=0.4,mean,100,4.463,4.089,5.045,-0.637,-12.5,-17.8,-1.8
+recall_bias,P_forget=0.0,median,100,4.51,4.336,4.712,0.0,0.0,0.0,0.0
+recall_bias,P_forget=0.1,median,100,4.136,3.944,4.341,-0.374,-8.3,-9.6,-7.1
+recall_bias,P_forget=0.4,median,100,3.087,2.84,3.345,-1.423,-31.6,-35.1,-27.8
+recall_bias,P_forget=0.0,sd,100,2.691,2.45,2.972,0.0,0.0,0.0,0.0
+recall_bias,P_forget=0.1,sd,100,3.026,2.702,3.354,0.335,12.5,6.0,19.5
+recall_bias,P_forget=0.4,sd,100,4.665,3.801,6.386,1.974,73.3,46.7,129.1
+reporting_scheme_change,Naive-pooled,mean,100,4.393,4.242,4.568,-0.687,-13.5,-16.1,-11.0
+reporting_scheme_change,Post-change-severe,mean,100,3.379,3.22,3.519,-1.701,-33.5,-36.6,-30.5
+reporting_scheme_change,Pre-change,mean,100,5.086,4.901,5.282,0.005,0.1,-3.4,4.0
+reporting_scheme_change,Truth,mean,100,5.08,4.966,5.211,0.0,0.0,0.0,0.0
+reporting_scheme_change,Naive-pooled,median,100,3.903,3.764,4.041,-0.6,-13.3,-15.4,-11.1
+reporting_scheme_change,Post-change-severe,median,100,3.15,2.975,3.28,-1.353,-30.0,-33.6,-27.2
+reporting_scheme_change,Pre-change,median,100,4.501,4.343,4.684,-0.001,-0.0,-2.9,3.3
+reporting_scheme_change,Truth,median,100,4.503,4.397,4.614,0.0,0.0,0.0,0.0
+reporting_scheme_change,Naive-pooled,sd,100,2.27,2.095,2.444,-0.386,-14.5,-21.3,-8.6
+reporting_scheme_change,Post-change-severe,sd,100,1.313,1.141,1.481,-1.343,-50.6,-55.9,-44.2
+reporting_scheme_change,Pre-change,sd,100,2.671,2.421,2.919,0.015,0.6,-9.1,8.7
+reporting_scheme_change,Truth,sd,100,2.655,2.514,2.806,0.0,0.0,0.0,0.0
+symptom_definition,Mild onset (shifted),mean,100,6.59,6.381,6.826,1.507,29.7,27.7,32.2
+symptom_definition,Mixed onset (50/50),mean,100,5.864,5.651,6.097,0.78,15.4,13.7,17.3
+symptom_definition,Severe onset (reference),mean,100,5.084,4.867,5.323,0.0,0.0,0.0,0.0
+symptom_definition,Mild onset (shifted),median,100,6.086,5.884,6.331,1.586,35.3,33.0,37.8
+symptom_definition,Mixed onset (50/50),median,100,5.246,5.038,5.5,0.746,16.6,14.2,18.9
+symptom_definition,Severe onset (reference),median,100,4.5,4.309,4.747,0.0,0.0,0.0,0.0
+symptom_definition,Mild onset (shifted),sd,100,2.737,2.538,2.92,0.068,2.6,-1.4,6.8
+symptom_definition,Mixed onset (50/50),sd,100,2.927,2.696,3.148,0.258,9.7,4.0,14.1
+symptom_definition,Severe onset (reference),sd,100,2.669,2.487,2.88,0.0,0.0,0.0,0.0
+uncertain_dates,Censored,mean,100,5.122,4.821,5.424,0.022,0.4,-3.2,3.8
+uncertain_dates,Lower-bound,mean,100,8.217,7.909,8.487,3.117,61.2,56.8,65.4
+uncertain_dates,Midpoint,mean,100,6.116,5.575,6.973,1.016,20.0,9.3,36.7
+uncertain_dates,Truth,mean,100,5.1,4.891,5.343,0.0,0.0,0.0,0.0
+uncertain_dates,Censored,median,100,4.505,4.215,4.798,-0.005,-0.1,-4.9,4.5
+uncertain_dates,Lower-bound,median,100,7.45,7.156,7.705,2.94,65.2,60.3,70.6
+uncertain_dates,Midpoint,median,100,4.351,4.026,4.775,-0.159,-3.5,-10.2,3.7
+uncertain_dates,Truth,median,100,4.51,4.332,4.708,0.0,0.0,0.0,0.0
+uncertain_dates,Censored,sd,100,2.766,2.395,3.082,0.074,2.8,-6.2,11.0
+uncertain_dates,Lower-bound,sd,100,3.822,3.492,4.116,1.13,42.1,29.1,53.1
+uncertain_dates,Midpoint,sd,100,6.051,4.821,7.891,3.359,125.3,78.2,183.6
+uncertain_dates,Truth,sd,100,2.692,2.459,2.983,0.0,0.0,0.0,0.0
