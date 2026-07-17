@@ -1,21 +1,21 @@
 # Forest plot of median percent bias with 2.5--97.5% Monte-Carlo intervals across
-# scenarios — a visual companion to Table~\ref{tab:mc-replication}. PROVISIONAL:
-# kept pending the review decision on whether the paper carries this figure.
+# scenarios
 #
 # Run:  julia --project=Julia Julia/mc_replication/forest_plot.jl [in.csv] [out.png]
 #   defaults: newest results/mc_combined_summary_<n_rep>.csv -> ../../figures/mc_forest.png
 #
+# Also callable as make_forest_plot(incsv, outpng) — run_all.jl calls it after a full
+# run so the figure cannot lag the table.
+#
 # Reuses latest_summary_csv / SCEN_ORDER / SCEN_LABEL from format_mc_table.jl.
 
 const FP_HERE = @__DIR__
-include(joinpath(FP_HERE, "format_mc_table.jl"))   # defines the helpers above (guarded main)
+# Guarded: run_all.jl has already included format_mc_table.jl by the time it includes us.
+isdefined(@__MODULE__, :format_mc_table) ||
+    include(joinpath(FP_HERE, "format_mc_table.jl"))
 using CairoMakie
 
-incsv  = length(ARGS) >= 1 ? ARGS[1] : latest_summary_csv()
-outpng = length(ARGS) >= 2 ? ARGS[2] : joinpath(FP_HERE, "..", "..", "figures", "mc_forest.png")
-
-df  = CSV.read(incsv, DataFrame)
-med = df[df.metric .== "median", :]
+const DEFAULT_OUTPNG = joinpath(FP_HERE, "..", "..", "figures", "mc_forest.png")
 
 # Plain-text scenario labels (strip the LaTeX escaping used in the table).
 plain(s) = replace(String(s), "\\%" => "%", "\\_" => "_", "\\&" => "&")
@@ -43,40 +43,55 @@ function build_rows(med)
     return methods, xs, los, his, isref, groups
 end
 
-methods, xs, los, his, isref, groups = build_rows(med)
-n = length(methods)
+function make_forest_plot(incsv::AbstractString = latest_summary_csv(),
+                          outpng::AbstractString = DEFAULT_OUTPNG)
+    df    = CSV.read(incsv, DataFrame)
+    n_rep = df.n_reps[1]                    # from the data, so the title cannot drift
+    med   = df[df.metric .== "median", :]
 
-# Row n at the top so the first scenario appears first.
-ys = Float64.(n:-1:1)
-row_y(r) = n - r + 1                        # data-space y of ordered row r
+    methods, xs, los, his, isref, groups = build_rows(med)
+    n = length(methods)
 
-xmin = minimum(los); xmax = maximum(his); span = max(xmax - xmin, 1.0)
-labelx = xmin - 0.42 * span                 # x anchor for scenario captions
+    # Row n at the top so the first scenario appears first.
+    ys = Float64.(n:-1:1)
+    row_y(r) = n - r + 1                        # data-space y of ordered row r
 
-fig = Figure(size = (960, 26n + 130))
-ax  = Axis(fig[1, 1];
-    xlabel = "Median percent bias (%)",
-    yticks = (ys, methods),
-    ygridvisible = false,
-    title = "Replicated median bias across scenarios (100 line lists, DDSA)")
+    xmin = minimum(los); xmax = maximum(his); span = max(xmax - xmin, 1.0)
+    labelx = xmin - 0.42 * span                 # x anchor for scenario captions
 
-vlines!(ax, [0]; color = (:black, 0.45), linestyle = :dash, linewidth = 1)
+    fig = Figure(size = (960, 26n + 130))
+    ax  = Axis(fig[1, 1];
+        xlabel = "Median percent bias (%)",
+        yticks = (ys, methods),
+        ygridvisible = false,
+        title = "Replicated median bias across scenarios ($(n_rep) line lists, DDSA)")
 
-# Group separators and scenario captions.
-for (k, (sc, a, b)) in enumerate(groups)
-    k > 1 && hlines!(ax, [row_y(a) + 0.5]; color = (:gray, 0.25), linewidth = 0.8)
-    text!(ax, labelx, (row_y(a) + row_y(b)) / 2; text = plain(SCEN_LABEL[sc]),
-          align = (:left, :center), fontsize = 12, font = :bold, color = :gray25)
+    vlines!(ax, [0]; color = (:black, 0.45), linestyle = :dash, linewidth = 1)
+
+    # Group separators and scenario captions.
+    for (k, (sc, a, b)) in enumerate(groups)
+        k > 1 && hlines!(ax, [row_y(a) + 0.5]; color = (:gray, 0.25), linewidth = 0.8)
+        text!(ax, labelx, (row_y(a) + row_y(b)) / 2; text = plain(SCEN_LABEL[sc]),
+              align = (:left, :center), fontsize = 12, font = :bold, color = :gray25)
+    end
+
+    # Intervals then points; reference rows in grey, biased rows in colour.
+    errorbars!(ax, xs, ys, xs .- los, his .- xs; direction = :x,
+               whiskerwidth = 6, color = :gray40, linewidth = 1.2)
+    scatter!(ax, xs, ys; color = [r ? :gray55 : :firebrick for r in isref], markersize = 9)
+
+    xlims!(ax, labelx - 0.02 * span, xmax + 0.06 * span)
+    ylims!(ax, 0.4, n + 0.6)
+
+    mkpath(dirname(outpng))
+    save(outpng, fig)
+    println("Wrote $outpng  ($n rows from $(basename(incsv)))")
+    return outpng
 end
 
-# Intervals then points; reference rows in grey, biased rows in colour.
-errorbars!(ax, xs, ys, xs .- los, his .- xs; direction = :x,
-           whiskerwidth = 6, color = :gray40, linewidth = 1.2)
-scatter!(ax, xs, ys; color = [r ? :gray55 : :firebrick for r in isref], markersize = 9)
-
-xlims!(ax, labelx - 0.02 * span, xmax + 0.06 * span)
-ylims!(ax, 0.4, n + 0.6)
-
-mkpath(dirname(outpng))
-save(outpng, fig)
-println("Wrote $outpng  ($n rows from $(basename(incsv)))")
+# Only runs when invoked directly, not when included by run_all.jl.
+if abspath(PROGRAM_FILE) == @__FILE__
+    incsv  = length(ARGS) >= 1 ? ARGS[1] : latest_summary_csv()
+    outpng = length(ARGS) >= 2 ? ARGS[2] : DEFAULT_OUTPNG
+    make_forest_plot(incsv, outpng)
+end

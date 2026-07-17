@@ -374,10 +374,10 @@ Subtracting the mean onset-to-report delay before imputation removes
 almost all of the location bias (median $\approx 4.5$ days in both
 pipelines), confirming that the initial bias stemmed from where the
 guess was placed, not from imputing at all. It does not, however,
-recover the true spread of the delay distribution. Because it fixes each
-missing onset to `date_reporting − mean_delay`, the imputed delays
-inherit the variance of the admission-to-report gap rather than the true
-onset-to-admission variance, so the fitted distribution is mildly
+recover the clean-data spread of the delay distribution. Because it
+fixes each missing onset to `date_reporting − mean_delay`, the imputed
+delays inherit the variance of the admission-to-report gap rather than
+the true onset-to-admission variance, so the fitted distribution is
 over-dispersed rather than too narrow (sd $\approx 3.4$ in DDSA and
 $3.1$ in `simulist`, against a clean-data $2.7$–$2.8$). The plain
 date-of-report imputation distorts the spread more severely (sd
@@ -385,13 +385,14 @@ $\approx 4.5$–$4.8$ days), on top of its location bias. The
 interval-censored model is the only approach that recovers both
 quantities: it keeps the central estimate close to the clean-data
 reference (median about 4.3 days in DDSA, 4.5 in `simulist`) and returns
-the true spread (sd $\approx 2.4$–$2.5$ days, within \$\$10% of truth).
-That is exactly the right behaviour under MCAR: the missingness biases
-neither the location nor the spread, so both are recovered, while the
-per-record onset uncertainty is carried through the widened `pwindow`
-rather than being discarded by committing to a single imputed date. When
-missingness is instead informative, imputation and censoring behave very
-differently (see issue_informative_missingness).
+the spread to near its clean-data value (sd $\approx 2.4$–$2.5$ days
+against a clean-data $2.7$–$2.8$, and $2.61$ against $2.69$ across the
+DDSA replications). That is exactly the right behaviour under MCAR: the
+missingness biases neither the location nor the spread, so both are
+recovered, while the per-record onset uncertainty is carried through the
+widened `pwindow` rather than being discarded by committing to a single
+imputed date. When missingness is instead informative, imputation and
+censoring behave very differently (see issue_informative_missingness).
 
 ## Estimates
 

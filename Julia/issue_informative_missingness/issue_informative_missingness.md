@@ -30,13 +30,13 @@ question: does the missingness depend on something we *observe*, or on
 the very quantity that is *missing*? When missingness depends only on an
 observed covariate, the sample can, in principle, be repaired by
 up-weighting the kinds of cases that were preferentially dropped
-(inverse-probability weighting). When it depends on the unobserved delay
-itself, no reweighting or censoring of the observed rows can recover
-what was removed, because the observed rows carry no information about
-the missing ones. Table 1 of the paper warns that missingness
-“introduces bias if missingness is non-random or varies over time”. The
-point of this scenario is that “non-random” hides two cases that behave
-very differently.
+(inverse-probability weighting) (Seaman and White 2013). When it depends
+on the unobserved delay itself, no reweighting or censoring of the
+observed rows can recover what was removed, because the observed rows
+carry no information about the missing ones. Table 1 of the paper warns
+that missingness “introduces bias if missingness is non-random or varies
+over time”. The point of this scenario is that “non-random” hides two
+cases that behave very differently.
 
 In this example the default analyst behaviour is to drop every row whose
 onset is missing, then fit the remaining onset-to-admission delays. The
@@ -84,13 +84,16 @@ the per-observation `weights`, not the likelihood.
     delay-dependent case.
 5.  **Time-varying missingness, corrected by inverse-probability
     weighting (IPW):** the recoverable case, because the missingness is
-    driven by calendar time, which is observed for every case through
-    the reporting date, rather than by the hidden delay. We estimate the
-    probability that an onset is recorded as a function of the reporting
-    week, then up-weight each recorded case by the inverse of that
-    probability, so the reweighted sample stands in for the full one.
-    This uses only observed quantities, with no epidemic-model
-    assumption, and returns the estimate close to the truth.
+    driven by the reporting date, which is recorded for every case,
+    rather than by the hidden delay. `pmiss_time` keys off
+    `date_reporting`, so this mechanism is MAR and the weighting is
+    consistent by construction; the only approximation left is the
+    weekly binning of that date. We estimate the probability that an
+    onset is recorded as a function of the reporting week, then
+    up-weight each recorded case by the inverse of that probability, so
+    the reweighted sample stands in for the full one. This uses only
+    observed quantities, with no epidemic-model assumption, and returns
+    the estimate close to the truth.
 
 Informative missingness is a generator-independent observation process,
 so it is shown for the DDSA pipeline only.
@@ -123,21 +126,19 @@ const N_SUB = 1000        # scaled up so each complete-case cohort stays ~500-73
 ## Helpers
 
 ``` julia
-# Normalised onset position u ∈ [0, 1] over the outbreak, and its case-weighted
-# mean, for the trend and time-varying missingness.
-function onset_positions(ll::AbstractDataFrame)
-    on = ll.date_onset
-    d0 = minimum(skipmissing(on))
-    days = Float64[Dates.value(on[i] - d0) for i in axes(ll, 1)]
+# Normalised position u ∈ [0, 1] of a date column over the outbreak, and its case-weighted mean. The delay trend keys off onset, since it models when illness began. The time-varying missingness keys off reporting, since an overwhelmed system drops the onset field as cases arrive at it; that also makes the mechanism a function of a date recorded for every case, so weighting on it is valid.
+function date_positions(dates::AbstractVector)
+    d0 = minimum(skipmissing(dates))
+    days = Float64[Dates.value(dates[i] - d0) for i in eachindex(dates)]
     span = maximum(days) - minimum(days)
     u = span > 0 ? days ./ span : fill(0.5, length(days))
     return u, mean(u)
 end
 
-# Apply a mean-preserving additive delay-time trend in place: each case's
-# onset-to-admission delay is shifted by round(slope · (u − ū)) days, so the
-# case-weighted mean shift is zero and the pooled delay distribution (the truth)
-# is unchanged, but delay now covaries with calendar time.
+onset_positions(ll::AbstractDataFrame)  = date_positions(ll.date_onset)
+report_positions(ll::AbstractDataFrame) = date_positions(ll.date_reporting)
+
+# Apply a mean-preserving additive delay-time trend in place: each case's onset-to-admission delay is shifted by round(slope · (u − ū)) days, so the case-weighted mean shift is zero and the pooled delay distribution (the truth) is unchanged, but delay now covaries with calendar time.
 function apply_mean_preserving_delay_trend!(ll::DataFrame; slope::Float64)
     u, ubar = onset_positions(ll)
     on = ll.date_onset
@@ -170,13 +171,8 @@ function complete_case_delays(ll::AbstractDataFrame, mask::AbstractVector)
     return delays
 end
 
-# Empirical inverse-probability weights for the observed (onset-recorded) cases,
-# keyed on the fully-observed reporting date. For each reporting-week bin we
-# estimate P(onset recorded | bin) = (#recorded in bin) / (#total in bin), then
-# weight each observed case by the inverse. Returns (delays, weights) aligned and
-# filtered identically. No onset information from the missing cases is used and
-# no epidemic model is assumed — only reporting dates (present for all cases) and
-# the onset-recorded indicator.
+# Empirical inverse-probability weights for the observed (onset-recorded) cases, keyed on the fully-observed reporting date.
+# For each reporting-week bin we estimate P(onset recorded | bin) = (#recorded in bin) / (#total in bin), then weight each observed case by the inverse. Returns (delays, weights) aligned and filtered identically. No onset information from the missing cases is used and no epidemic model is assumed — only reporting dates (present for all cases) and the onset-recorded indicator.
 function complete_case_ipw(ll::AbstractDataFrame, mask::AbstractVector; binwidth::Int = IPW_BINW)
     rep = ll.date_reporting; on = ll.date_onset; adm = ll.date_admission
     t0 = minimum(skipmissing(rep))
@@ -201,9 +197,7 @@ function complete_case_ipw(ll::AbstractDataFrame, mask::AbstractVector; binwidth
     return delays, w
 end
 
-# Wide censoring window for the delay-dependent MNAR check: keep the missing-onset
-# rows instead of dropping them, entering each as the broad interval [adm − 56, adm]
-# (the honest "onset sometime before admission" an analyst could assert without extra information), while recorded onsets keep pwindow = 1. Mirrors the interval-censored construction in issue_imputation.
+# Wide censoring window for the delay-dependent MNAR check: keep the missing-onset rows instead of dropping them, entering each as the broad interval [adm − 56, adm] (the honest "onset sometime before admission" an analyst could assert without extra information), while recorded onsets keep pwindow = 1. Mirrors the interval-censored construction in issue_imputation.
 function censored_window_delays(ll::AbstractDataFrame, mask::AbstractVector)
     on = ll.date_onset; adm = ll.date_admission
     min_obs_onset = minimum(on[i] for i in axes(ll, 1) if !mask[i])
@@ -262,14 +256,14 @@ println("DDSA line list: $(nrow(ll)) cases (mean-preserving delay trend applied)
 ## Build the missingness mechanisms and fit
 
 ``` julia
-u, _ = onset_positions(ll)
+r, _ = report_positions(ll)
 base_delays = Float64[Dates.value(ll.date_admission[i] - ll.date_onset[i]) for i in axes(ll, 1)]
 n = nrow(ll)
 
 # Missingness mechanisms (per-row probability the onset is NOT recorded).
 pmiss_mcar  = fill(0.5, n)
 pmiss_delay = clamp.(0.05 .+ 0.07 .* base_delays, 0.0, 0.90)    # ↑ with delay
-pmiss_time  = clamp.(0.05 .+ 0.90 .* u, 0.0, 0.97)             # ↑ over epidemic time
+pmiss_time  = clamp.(0.05 .+ 0.90 .* r, 0.0, 0.97)             # ↑ over reporting time
 
 mask_mcar  = draw_missing_mask(pmiss_mcar;  seed = SEED + 1)
 mask_delay = draw_missing_mask(pmiss_delay; seed = SEED + 2)
@@ -281,8 +275,7 @@ est_delay_cc = fit_cc(complete_case_delays(ll, mask_delay); seed = SEED + 2)
 est_time_cc  = fit_cc(complete_case_delays(ll, mask_time); seed = SEED + 3)
 est_time_ipw = fit_ipw(complete_case_ipw(ll, mask_time)...; seed = SEED + 13)
 
-# Check: can a wide censoring window on the missing rows repair the delay-dependent
-# MNAR bias? (It cannot; the window carries no information about where the onset fell.)
+# Check: can a wide censoring window on the missing rows repair the delay-dependent MNAR bias? 
 _dcw, _pwcw = censored_window_delays(ll, mask_delay)
 est_delay_censored = fit_lognormal_pcd(_dcw; pwindow = _pwcw,
     n_samples = 1000, n_chains = 2, seed = SEED + 22)
@@ -318,9 +311,9 @@ width="1100" height="540" />
 ## Results
 
 The five columns separate cleanly into the benign, the recoverable, and
-the irreparable. Against a complete-data reference near a median of 4.25
+the irreparable. Against a complete-data reference near a median of 4.26
 days, dropping half the onsets at random leaves the estimate on the
-reference (about 4.28 days). Random missingness, however extensive,
+reference (about 4.30 days). Random missingness, however extensive,
 costs precision but not accuracy. This is the sanity check that the
 complete-case estimator is unbiased when nothing links missingness to
 the delay.
@@ -346,23 +339,25 @@ here because on data generated by such a model it would risk
 demonstrating only that we can invert our own generator.
 
 The time-varying mechanism is the recoverable case, the surge in which
-an overwhelmed system stops collecting onset dates. A missingness rate
-that climbs over epidemic time, riding on the mean-preserving delay
-trend, preferentially drops the later long-delay cases and pulls the
-median down to about 3.94 days, a milder bias. Because its driver is
-calendar time, which is observed for every case through the reporting
-date, inverse-probability weighting on the reporting week returns the
-estimate to about 4.19 days, back on the reference. The weighting
-recovers the truth under the condition that, given the variable used to
-form the weights, missingness no longer depends on the delay; here the
-mechanism keys off onset time while the weights are formed on reporting
-week, which proxies it closely enough (reporting lags onset by only a
-few days) for the correction to land.
+an overwhelmed system stops collecting onset dates as cases arrive. A
+missingness rate that climbs over reporting time, riding on the
+mean-preserving delay trend, preferentially drops the later long-delay
+cases and pulls the median down to about 3.96 days. Because its driver
+is the reporting date, which is recorded for every case, rather than the
+hidden delay, inverse-probability weighting on the reporting week
+returns the estimate to about 4.24 days against a 4.26 reference. The
+weighting recovers the truth under the condition that, given the
+variable used to form the weights, missingness no longer depends on the
+delay (equation 3 of (Seaman and White 2013)), and here that condition
+holds by construction, since `pmiss_time` is a function of the reporting
+date alone. The only approximation left is the weekly binning of that
+date, which coarsens an observed covariate rather than standing in for
+an unobserved one.
 
 In sum, random missingness is harmless for the central estimate,
 missingness driven by an observed covariate can be reweighted away, and
-missingness driven by the unobserved delay itself cannot be reweighted
-away, so it must be anticipated in the line-list design.
+missingness driven by the unobserved delay itself cannot, so it must be
+anticipated in the line-list design.
 
 ## Estimates
 
@@ -382,15 +377,15 @@ away, so it must be anticipated in the line-list design.
     │   mean = (4.654424124379754, 4.212559857362097, 5.258789267446552)
     └   sd = (4.69048695295843, 3.8658163253859903, 5.989821817352334)
     ┌ Info: time-varying (complete-case)
-    │   n = 659
-    │   median = (3.9379959302703886, 3.676741344587476, 4.246449414398722)
-    │   mean = (5.609099677369662, 5.128636261429276, 6.2840808010209495)
-    └   sd = (5.6908435043973835, 4.73132928073467, 7.0913267074620485)
+    │   n = 650
+    │   median = (3.9626649433746444, 3.707595241931038, 4.246079289150043)
+    │   mean = (5.598861907465805, 5.13353470318899, 6.23409168763533)
+    └   sd = (5.581629144678659, 4.735522632164176, 6.928219837635719)
     ┌ Info: time-varying (IPW on reporting week)
-    │   n = 659
-    │   median = (4.1963744579064794, 3.972249856439499, 4.450091261149467)
-    │   mean = (5.777872427523198, 5.403196625826788, 6.2959619205778745)
-    └   sd = (5.467675947634916, 4.79258398355595, 6.482122597883543)
+    │   n = 650
+    │   median = (4.235955521910241, 4.0077405142042, 4.484411162216003)
+    │   mean = (5.794828341238615, 5.397886247610821, 6.274006749583127)
+    └   sd = (5.420180662724036, 4.736509508699261, 6.331739668765548)
     ┌ Info: delay-dependent MNAR (wide censoring window; check)
     │   n = 1000
     │   median = 3.07
@@ -421,6 +416,15 @@ Charniga, Sang Woo AND Akhmetzhanov, Kelly AND Park. 2024. “Best
 Practices for Estimating and Reporting Epidemiological Delay
 Distributions of Infectious Diseases.” *PLOS Computational Biology* 20
 (10): 1–21. <https://doi.org/10.1371/journal.pcbi.1012520>.
+
+</div>
+
+<div id="ref-seaman2013ipw" class="csl-entry">
+
+Seaman, Shaun R., and Ian R. White. 2013. “Review of Inverse Probability
+Weighting for Dealing with Missing Data.” *Statistical Methods in
+Medical Research* 22 (3): 278–95.
+<https://doi.org/10.1177/0962280210395740>.
 
 </div>
 

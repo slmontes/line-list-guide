@@ -110,13 +110,16 @@ csvpath = joinpath(outdir, csvname)
 CSV.write(csvpath, combined)
 println("\nWrote results/$(csvname)")
 
-# Regenerate the LaTeX table only on a full run; a filtered subset would write a
-# partial table over the one supplementary.tex inputs.
+# Regenerate the LaTeX table and its companion forest plot only on a full run; a
+# filtered subset would write partial artefacts over the ones the paper inputs.
 if isempty(requested)
     println("Regenerating LaTeX table via format_mc_table.jl ...")
     include(joinpath(HERE, "format_mc_table.jl"))   # defines format_mc_table
     format_mc_table(csvpath)
+    println("Regenerating forest plot via forest_plot.jl ...")
+    include(joinpath(HERE, "forest_plot.jl"))       # defines make_forest_plot
+    make_forest_plot(csvpath)
 else
-    println("Filtered run — skipping LaTeX table regeneration. " *
-            "Run without a scenario filter to refresh mc_summary_table.tex.")
+    println("Filtered run — skipping LaTeX table and forest-plot regeneration. " *
+            "Run without a scenario filter to refresh mc_summary_table.tex and figures/mc_forest.png.")
 end

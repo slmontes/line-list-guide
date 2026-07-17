@@ -179,16 +179,16 @@ end
 # ==================================================================================
 # informative missingness
 # ==================================================================================
-function _im_positions(ll)
-    on = ll.date_onset; d0 = minimum(skipmissing(on))
-    days = Float64[Dates.value(on[i] - d0) for i in axes(ll, 1)]
+function _im_positions(dates)
+    d0 = minimum(skipmissing(dates))
+    days = Float64[Dates.value(dates[i] - d0) for i in eachindex(dates)]
     span = maximum(days) - minimum(days)
     u = span > 0 ? days ./ span : fill(0.5, length(days))
     return u, mean(u)
 end
 
 function _im_trend!(ll::DataFrame; slope::Float64)
-    u, ubar = _im_positions(ll); on = ll.date_onset; adm = ll.date_admission
+    u, ubar = _im_positions(ll.date_onset); on = ll.date_onset; adm = ll.date_admission
     for i in axes(ll, 1)
         base = Dates.value(adm[i] - on[i])
         adm[i] = on[i] + Day(max(base + round(Int, slope * (u[i] - ubar)), 0))
@@ -233,12 +233,12 @@ function informative_missingness_run_once(seed::Int)
         admi_delay_dist = LogNormal(1.5, 0.5), seed = seed)
     ll = subsample_linelist(ll, 1000; seed = seed)
     _im_trend!(ll; slope = 14.0)
-    u, _ = _im_positions(ll)
+    r, _ = _im_positions(ll.date_reporting)
     base = Float64[Dates.value(ll.date_admission[i] - ll.date_onset[i]) for i in axes(ll, 1)]
     n = nrow(ll)
     mask_mcar  = _im_mask(fill(0.5, n); seed = seed + 1)
     mask_delay = _im_mask(clamp.(0.05 .+ 0.07 .* base, 0.0, 0.90); seed = seed + 2)
-    mask_time  = _im_mask(clamp.(0.05 .+ 0.90 .* u, 0.0, 0.97); seed = seed + 3)
+    mask_time  = _im_mask(clamp.(0.05 .+ 0.90 .* r, 0.0, 0.97); seed = seed + 3)
     ref = _mcfit(_im_cc_delays(ll, falses(n)); seed = seed)
     dipw, wipw = _im_ipw(ll, mask_time)
     est_ipw = fit_lognormal_pcd(dipw; pwindow = ones(length(dipw)), weights = wipw,
