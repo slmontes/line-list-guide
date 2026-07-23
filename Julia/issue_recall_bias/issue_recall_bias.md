@@ -300,21 +300,24 @@ column. We demonstrate this at `p_forget = 0.4`, where the bias is
 largest, using a validation subsample of cases whose true onset is
 known.
 
-The validation subsample is a set of cases for which a gold-standard
+The validation subsample is a set of cases for which a record-confirmed
 onset has been recovered from clinical records alongside the remembered
-onset. On this subsample the recall shift is observed directly, and its
-distribution is used to impute the shift for the remaining cases. The
-imputation is repeated so the spread of plausible shifts is carried
-through rather than collapsed onto a single guess. We tried to sharpen
-the imputation by predicting each shift from the observed recalled
-onset-to-report gap, but that gap carries almost no per-case
-information, because the gap and the shift are confounded, so the
-correction reduces to imputing from the shift distribution learned on
-the subsample.
+onset. This assumes the clinical record reproduces the true onset
+exactly; real records carry their own transcription and recall error, so
+the correction demonstrated here is a best-case bound rather than a
+guaranteed recovery. On this subsample the recall shift is observed
+directly, and its distribution is used to impute the shift for the
+remaining cases. The imputation is repeated so the spread of plausible
+shifts is carried through rather than collapsed onto a single guess. We
+tried to sharpen the imputation by predicting each shift from the
+observed recalled onset-to-report gap, but that gap carries almost no
+per-case information, because the gap and the shift are confounded, so
+the correction reduces to imputing from the shift distribution learned
+on the subsample.
 
 ``` julia
 const PF_FIX = 0.4
-const VAL_FRAC = 0.30      # share of cases with a gold-standard, record-based onset
+const VAL_FRAC = 0.30      # share of cases with a record-confirmed onset (assumed exact here)
 const N_IMP = 15           # multiple-imputation draws for the validation correction
 const OUT_PATH_FIX = joinpath(FIG_DIR, "issue_recall_bias_fix.png")
 
@@ -345,7 +348,7 @@ function pool_fits(fits)
 end
 
 # Validation-informed correction: learn the recall-shift distribution on the
-# gold-standard subsample and multiply-impute it for the remaining cases.
+# record-confirmed subsample and multiply-impute it for the remaining cases.
 rng_val = MersenneTwister(SEED + 777)
 val_mask = falses(nfix)
 val_mask[sample(rng_val, 1:nfix, round(Int, VAL_FRAC * nfix); replace = false)] .= true
@@ -405,19 +408,18 @@ estimate. The recall shift cannot be measured, and any adjustment would
 rest on an assumed telescoping magnitude that the recalled data can
 neither confirm nor refute, so the result would reflect the assumption
 rather than correct the bias. For recall bias specifically, the
-dependable options are therefore obtaining gold-standard onsets for a
-subsample, as above, or capturing a less recall-prone onset marker at
-the point of data collection. Where neither is possible, the bias must
-be noted, together with its likely downward direction, but may not be
-removable.
+dependable options are therefore obtaining record-confirmed onsets for a
+subsample, as above (assuming those records are themselves accurate), or
+capturing a less recall-prone onset marker at the point of data
+collection. Where neither is possible, the bias must be noted, together
+with its likely downward direction, but may not be removable.
 
-<div id="refs" class="references csl-bib-body hanging-indent"
-entry-spacing="0">
+<div id="refs" class="references csl-bib-body hanging-indent">
 
 <div id="ref-CensoredDistributions_jl" class="csl-entry">
 
 Abbott, Sam, Damon Bayer, Sam Brand, Michael DeWitt, and Joseph
-Lemaitre. 2025. “CensoredDistributions.jl.”
+Lemaitre. 2025. *CensoredDistributions.jl*. Released.
 <https://doi.org/10.5281/zenodo.18474652>.
 
 </div>

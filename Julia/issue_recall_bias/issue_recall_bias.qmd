@@ -213,12 +213,12 @@ This telescoping phenomenon also distorts the reconstructed epidemic curve. As r
 
 Recall bias differs from the other issues in this guide because the onset date is present but systematically wrong rather than missing, so the true delay distribution cannot be recovered from the degraded line list on its own. A short recalled delay is equally consistent with a genuinely short delay and with a longer delay that was telescoped, and these two explanations cannot be separated using the recalled column alone. A correction therefore needs information from outside that column. We demonstrate this at `p_forget = 0.4`, where the bias is largest, using a validation subsample of cases whose true onset is known.
 
-The validation subsample is a set of cases for which a gold-standard onset has been recovered from clinical records alongside the remembered onset. On this subsample the recall shift is observed directly, and its distribution is used to impute the shift for the remaining cases. The imputation is repeated so the spread of plausible shifts is carried through rather than collapsed onto a single guess. We tried to sharpen the imputation by predicting each shift from the observed recalled onset-to-report gap, but that gap carries almost no per-case information, because the gap and the shift are confounded, so the correction reduces to imputing from the shift distribution learned on the subsample.
+The validation subsample is a set of cases for which a record-confirmed onset has been recovered from clinical records alongside the remembered onset. This assumes the clinical record reproduces the true onset exactly; real records carry their own transcription and recall error, so the correction demonstrated here is a best-case bound rather than a guaranteed recovery. On this subsample the recall shift is observed directly, and its distribution is used to impute the shift for the remaining cases. The imputation is repeated so the spread of plausible shifts is carried through rather than collapsed onto a single guess. We tried to sharpen the imputation by predicting each shift from the observed recalled onset-to-report gap, but that gap carries almost no per-case information, because the gap and the shift are confounded, so the correction reduces to imputing from the shift distribution learned on the subsample.
 
 ```{julia}
 #| output: false
 const PF_FIX = 0.4
-const VAL_FRAC = 0.30      # share of cases with a gold-standard, record-based onset
+const VAL_FRAC = 0.30      # share of cases with a record-confirmed onset (assumed exact here)
 const N_IMP = 15           # multiple-imputation draws for the validation correction
 const OUT_PATH_FIX = joinpath(FIG_DIR, "issue_recall_bias_fix.png")
 
@@ -249,7 +249,7 @@ function pool_fits(fits)
 end
 
 # Validation-informed correction: learn the recall-shift distribution on the
-# gold-standard subsample and multiply-impute it for the remaining cases.
+# record-confirmed subsample and multiply-impute it for the remaining cases.
 rng_val = MersenneTwister(SEED + 777)
 val_mask = falses(nfix)
 val_mask[sample(rng_val, 1:nfix, round(Int, VAL_FRAC * nfix); replace = false)] .= true
@@ -287,4 +287,4 @@ fig_fix
 
 With a validation subsample covering 30% of cases, 150 records here, the recall shift averages about 1.2 days. Imputing that shift for the remaining cases returns the onset-to-admission median to about 4.3 days, close to the dashed reference of 4.45 days and well away from the naive estimate of 2.90 days. The location is recovered, but the dispersion only partly so. The fitted standard deviation falls from 4.07 days under the naive fit to 3.39 days, still above the clean-data value of 2.62 days, because the shift is imputed from its marginal distribution and cannot be matched to each case's own delay. Fully recovering the spread would need a per-case predictor of the shift, which the recalled data do not provide.
 
-When no validation data exist, there is no comparable way to recover the estimate. The recall shift cannot be measured, and any adjustment would rest on an assumed telescoping magnitude that the recalled data can neither confirm nor refute, so the result would reflect the assumption rather than correct the bias. For recall bias specifically, the dependable options are therefore obtaining gold-standard onsets for a subsample, as above, or capturing a less recall-prone onset marker at the point of data collection. Where neither is possible, the bias must be noted, together with its likely downward direction, but may not be removable.
+When no validation data exist, there is no comparable way to recover the estimate. The recall shift cannot be measured, and any adjustment would rest on an assumed telescoping magnitude that the recalled data can neither confirm nor refute, so the result would reflect the assumption rather than correct the bias. For recall bias specifically, the dependable options are therefore obtaining record-confirmed onsets for a subsample, as above (assuming those records are themselves accurate), or capturing a less recall-prone onset marker at the point of data collection. Where neither is possible, the bias must be noted, together with its likely downward direction, but may not be removable.

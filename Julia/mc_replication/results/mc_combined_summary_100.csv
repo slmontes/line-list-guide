@@ -38,12 +38,15 @@ informative_missingness,Truth,sd,100,5.648,4.348,7.886,0.0,0.0,0.0,0.0
 recall_bias,P_forget=0.0,mean,100,5.1,4.896,5.352,0.0,0.0,0.0,0.0
 recall_bias,P_forget=0.1,mean,100,4.871,4.637,5.104,-0.229,-4.5,-5.7,-2.9
 recall_bias,P_forget=0.4,mean,100,4.463,4.089,5.045,-0.637,-12.5,-17.8,-1.8
+recall_bias,Validation-corrected,mean,100,5.276,5.043,5.571,0.176,3.4,0.2,7.1
 recall_bias,P_forget=0.0,median,100,4.51,4.336,4.712,0.0,0.0,0.0,0.0
 recall_bias,P_forget=0.1,median,100,4.136,3.944,4.341,-0.374,-8.3,-9.6,-7.1
 recall_bias,P_forget=0.4,median,100,3.087,2.84,3.345,-1.423,-31.6,-35.1,-27.8
+recall_bias,Validation-corrected,median,100,4.35,4.138,4.582,-0.16,-3.6,-6.9,-0.3
 recall_bias,P_forget=0.0,sd,100,2.691,2.45,2.972,0.0,0.0,0.0,0.0
 recall_bias,P_forget=0.1,sd,100,3.026,2.702,3.354,0.335,12.5,6.0,19.5
 recall_bias,P_forget=0.4,sd,100,4.665,3.801,6.386,1.974,73.3,46.7,129.1
+recall_bias,Validation-corrected,sd,100,3.617,3.22,4.011,0.926,34.5,23.5,46.0
 reporting_scheme_change,Naive-pooled,mean,100,4.393,4.242,4.568,-0.687,-13.5,-16.1,-11.0
 reporting_scheme_change,Post-change-severe,mean,100,3.379,3.22,3.519,-1.701,-33.5,-36.6,-30.5
 reporting_scheme_change,Pre-change,mean,100,5.086,4.901,5.282,0.005,0.1,-3.4,4.0

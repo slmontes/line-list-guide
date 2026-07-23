@@ -43,6 +43,9 @@ end
 # recall bias
 # ==================================================================================
 const RECALL_P_LEVELS = [0.0, 0.1, 0.4]
+const RECALL_PF_FIX    = 0.4    # forgetting level at which the correction is demonstrated
+const RECALL_VAL_FRAC  = 0.30   # share of cases with a record-confirmed onset (assumed exact here)
+const RECALL_N_IMP     = 15     # multiple-imputation draws for the validation correction
 
 function _cap_at_admission!(ll::DataFrame)
     ll.date_onset_recalled = [
@@ -56,6 +59,46 @@ end
 _recall_delays(ll) = Int[Dates.value(ll.date_admission[i] - ll.date_onset_recalled[i])
     for i in axes(ll, 1)
     if !ismissing(ll.date_onset_recalled[i]) && !ismissing(ll.date_admission[i])]
+
+# Pool several posterior fits (one per imputation) into one estimate NamedTuple.
+function _recall_pool_fits(fits)
+    med = reduce(vcat, f.median_samples for f in fits)
+    mn  = reduce(vcat, f.mean_samples   for f in fits)
+    sdv = reduce(vcat, f.sd_samples     for f in fits)
+    μs = log.(med)
+    σs = sqrt.(max.(2 .* (log.(mn) .- μs), 0.0))
+    d  = LogNormal(median(μs), median(σs))
+    q(x) = (median(x), quantile(x, 0.025), quantile(x, 0.975))
+    return (n = fits[1].n, dist = d, median = q(med), mean = q(mn), sd = q(sdv),
+            median_samples = med, mean_samples = mn, sd_samples = sdv)
+end
+
+# Validation-informed correction: learn the recall-shift distribution on a
+# record-confirmed subsample and multiply-impute it for the remaining cases.
+function _recall_validation_fit(ll_clean::DataFrame, seed::Int)
+    ll = copy(ll_clean)
+    add_recall_bias!(ll; p_forget = RECALL_PF_FIX, seed = seed + 100 + 3)
+    _cap_at_admission!(ll)
+
+    n = nrow(ll)
+    recalled_delay = Int[Dates.value(ll.date_admission[i]     - ll.date_onset_recalled[i]) for i in 1:n]
+    true_delay     = Int[Dates.value(ll.date_admission[i]     - ll.date_onset[i])          for i in 1:n]
+    recall_shift   = Int[Dates.value(ll.date_onset_recalled[i] - ll.date_onset[i])         for i in 1:n]
+
+    rng_val = MersenneTwister(seed + 777)
+    val_mask = falses(n)
+    val_mask[sample(rng_val, 1:n, round(Int, RECALL_VAL_FRAC * n); replace = false)] .= true
+    val_shifts = recall_shift[val_mask]
+
+    rng_imp = MersenneTwister(seed + 888)
+    imp_fits = NamedTuple[]
+    for m in 1:RECALL_N_IMP
+        d = Int[val_mask[i] ? true_delay[i] :
+                recalled_delay[i] + sample(rng_imp, val_shifts) for i in 1:n]
+        push!(imp_fits, _mcfit(Float64.(filter(≥(0), d)); seed = seed + 2000 + m))
+    end
+    return _recall_pool_fits(imp_fits)
+end
 
 function recall_run_once(seed::Int)
     ll_clean = simulate_linelist_ddsa(_ddsa_params();
@@ -74,6 +117,8 @@ function recall_run_once(seed::Int)
     for pf in RECALL_P_LEVELS
         append!(rows, _metric_rows(seed, "P_forget=$pf", fits[pf], ref))
     end
+    est_validation = _recall_validation_fit(ll_clean, seed)
+    append!(rows, _metric_rows(seed, "Validation-corrected", est_validation, ref))
     return rows
 end
 
