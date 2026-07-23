@@ -20,8 +20,13 @@ const DEFAULT_OUTPNG = joinpath(FP_HERE, "..", "..", "figures", "mc_forest.png")
 # Plain-text scenario labels (strip the LaTeX escaping used in the table).
 plain(s) = replace(String(s), "\\%" => "%", "\\_" => "_", "\\&" => "&")
 
+const SCEN_METHOD_ORDER = Dict(
+    "recall_bias" => ["P_forget=0.0", "P_forget=0.1", "P_forget=0.4", "Validation-corrected"],
+)
+
 # Build ordered rows: scenarios in presentation order, methods by |median %bias|
-# ascending so the reference (0) leads each group, matching the table.
+# ascending so the reference (0) leads each group, matching the table — unless
+# overridden by SCEN_METHOD_ORDER.
 function build_rows(med)
     methods = String[]; xs = Float64[]; los = Float64[]; his = Float64[]; isref = Bool[]
     groups = Tuple{String,Int,Int}[]       # (scenario, first_row, last_row)
@@ -30,9 +35,15 @@ function build_rows(med)
         sub = med[med.scenario .== sc, :]
         isempty(sub) && continue
         first_row = row + 1
-        refrows  = findall(r -> sub.mean_pct[r] == 0 && sub.pct_lo[r] == 0 && sub.pct_hi[r] == 0, 1:nrow(sub))
-        restrows = sort(setdiff(1:nrow(sub), refrows); by = r -> abs(sub.mean_pct[r]))
-        for i in vcat(refrows, restrows)
+        order = if haskey(SCEN_METHOD_ORDER, sc)
+            name_to_row = Dict(String(sub.method[r]) => r for r in 1:nrow(sub))
+            [name_to_row[m] for m in SCEN_METHOD_ORDER[sc]]
+        else
+            refrows  = findall(r -> sub.mean_pct[r] == 0 && sub.pct_lo[r] == 0 && sub.pct_hi[r] == 0, 1:nrow(sub))
+            restrows = sort(setdiff(1:nrow(sub), refrows); by = r -> abs(sub.mean_pct[r]))
+            vcat(refrows, restrows)
+        end
+        for i in order
             row += 1
             push!(methods, String(sub.method[i]))
             push!(xs, sub.mean_pct[i]); push!(los, sub.pct_lo[i]); push!(his, sub.pct_hi[i])
